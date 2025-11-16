@@ -211,6 +211,11 @@ export const messagesAPI = {
     const response = await apiClient.delete(`/api/messages/groups/${groupId}`);
     return response.data;
   },
+
+  getUnreadCount: async () => {
+    const response = await apiClient.get('/api/messages/unread-count');
+    return response.data;
+  },
 };
 
 // Users endpoints
@@ -219,6 +224,21 @@ export const usersAPI = {
     const params: any = { page, limit };
     if (search) params.search = search;
     const response = await apiClient.get('/api/users/available', { params });
+    return response.data;
+  },
+};
+
+// Notifications endpoints
+export const notificationsAPI = {
+  registerDeviceToken: async (expoPushToken: string) => {
+    const response = await apiClient.post('/api/notifications/register-token', {
+      expoPushToken,
+    });
+    return response.data;
+  },
+
+  unregisterDeviceToken: async () => {
+    const response = await apiClient.post('/api/notifications/unregister-token');
     return response.data;
   },
 };

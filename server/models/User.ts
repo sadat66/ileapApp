@@ -11,6 +11,7 @@ export interface IUser {
   volunteer_profile?: mongoose.Types.ObjectId;
   organization_profile?: mongoose.Types.ObjectId;
   last_seen?: Date;
+  expoPushToken?: string;
   createdAt?: Date; 
   updatedAt?: Date;
 }
@@ -27,6 +28,7 @@ const UserSchema: Schema = new Schema<IUser>(
     volunteer_profile: { type: Schema.Types.ObjectId, ref: 'volunteer_profile' },
     organization_profile: { type: Schema.Types.ObjectId, ref: 'organization_profile' },
     last_seen: { type: Date, default: Date.now, index: true },
+    expoPushToken: { type: String },
   },
   { timestamps: true }
 );

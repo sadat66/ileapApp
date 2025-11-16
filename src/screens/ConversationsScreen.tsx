@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { messagesAPI } from '../config/api';
 import { Conversation, Group } from '../types/message';
 import { formatDistanceToNow } from 'date-fns';
@@ -21,11 +22,13 @@ import { Plus } from 'lucide-react-native';
 export default function ConversationsScreen({ navigation }: any) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'conversations' | 'groups'>('conversations');
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0);
 
   useEffect(() => {
     loadData();
@@ -36,12 +39,14 @@ export default function ConversationsScreen({ navigation }: any) {
 
   const loadData = async () => {
     try {
-      const [conversationsData, groupsData] = await Promise.all([
+      const [conversationsData, groupsData, unreadData] = await Promise.all([
         messagesAPI.getConversations(),
         messagesAPI.getGroups(),
+        messagesAPI.getUnreadCount().catch(() => ({ totalUnread: 0 })),
       ]);
       setConversations(conversationsData);
       setGroups(groupsData);
+      setTotalUnreadCount(unreadData.totalUnread || 0);
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {
@@ -60,14 +65,14 @@ export default function ConversationsScreen({ navigation }: any) {
     
     return (
       <TouchableOpacity
-        style={styles.conversationItem}
+        style={[styles.conversationItem, { borderBottomColor: theme.colors.border }]}
         onPress={() => navigation.navigate('Chat', { userId: item._id, isGroup: false })}
       >
         <View style={styles.avatarContainer}>
           {item.user.image ? (
             <Image source={{ uri: item.user.image }} style={styles.avatar} />
           ) : (
-            <View style={styles.avatarPlaceholder}>
+            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
               <Text style={styles.avatarText}>
                 {item.user.name.charAt(0).toUpperCase()}
               </Text>
@@ -83,12 +88,12 @@ export default function ConversationsScreen({ navigation }: any) {
         </View>
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text style={styles.conversationName} numberOfLines={1}>
+            <Text style={[styles.conversationName, { color: theme.colors.text }]} numberOfLines={1}>
               {item.user.name}
             </Text>
-            <Text style={styles.time}>{timeAgo}</Text>
+            <Text style={[styles.time, { color: theme.colors.textTertiary }]}>{timeAgo}</Text>
           </View>
-          <Text style={styles.lastMessage} numberOfLines={1}>
+          <Text style={[styles.lastMessage, { color: theme.colors.textSecondary }]} numberOfLines={1}>
             {item.lastMessage.content}
           </Text>
         </View>
@@ -103,11 +108,11 @@ export default function ConversationsScreen({ navigation }: any) {
     
     return (
       <TouchableOpacity
-        style={styles.conversationItem}
+        style={[styles.conversationItem, { borderBottomColor: theme.colors.border }]}
         onPress={() => navigation.navigate('Chat', { userId: item._id, isGroup: true })}
       >
         <View style={styles.avatarContainer}>
-          <View style={styles.avatarPlaceholder}>
+          <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
             <Text style={styles.avatarText}>
               {item.name.charAt(0).toUpperCase()}
             </Text>
@@ -122,13 +127,13 @@ export default function ConversationsScreen({ navigation }: any) {
         </View>
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text style={styles.conversationName} numberOfLines={1}>
+            <Text style={[styles.conversationName, { color: theme.colors.text }]} numberOfLines={1}>
               {item.name}
             </Text>
-            {timeAgo && <Text style={styles.time}>{timeAgo}</Text>}
+            {timeAgo && <Text style={[styles.time, { color: theme.colors.textTertiary }]}>{timeAgo}</Text>}
           </View>
           {item.lastMessage && (
-            <Text style={styles.lastMessage} numberOfLines={1}>
+            <Text style={[styles.lastMessage, { color: theme.colors.textSecondary }]} numberOfLines={1}>
               {item.lastMessage.content}
             </Text>
           )}
@@ -139,14 +144,14 @@ export default function ConversationsScreen({ navigation }: any) {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={[styles.centerContainer, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <Header
         title="Conversations"
         onMenuPress={() => setIsMenuOpen(true)}
@@ -158,28 +163,34 @@ export default function ConversationsScreen({ navigation }: any) {
           }
         }}
         showHomeButton={false}
+        unreadCount={totalUnreadCount}
       />
-      <View style={styles.container}>
-        <View style={styles.tabContainer}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.tabContainer, { borderBottomColor: theme.colors.border }]}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'conversations' && styles.activeTab]}
+            style={[styles.tab, activeTab === 'conversations' && { borderBottomColor: theme.colors.primary }]}
             onPress={() => setActiveTab('conversations')}
           >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'conversations' && styles.activeTabText,
+                { color: theme.colors.textSecondary },
+                activeTab === 'conversations' && { color: theme.colors.primary, fontWeight: '600' },
               ]}
             >
               Conversations
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'groups' && styles.activeTab]}
+            style={[styles.tab, activeTab === 'groups' && { borderBottomColor: theme.colors.primary }]}
             onPress={() => setActiveTab('groups')}
           >
             <Text
-              style={[styles.tabText, activeTab === 'groups' && styles.activeTabText]}
+              style={[
+                styles.tabText,
+                { color: theme.colors.textSecondary },
+                activeTab === 'groups' && { color: theme.colors.primary, fontWeight: '600' },
+              ]}
             >
               Groups
             </Text>
@@ -191,12 +202,16 @@ export default function ConversationsScreen({ navigation }: any) {
           renderItem={activeTab === 'conversations' ? renderConversationItem : renderGroupItem}
           keyExtractor={(item) => item._id}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh}
+              tintColor={theme.colors.primary}
+            />
           }
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>
+              <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>
                 No {activeTab === 'conversations' ? 'conversations' : 'groups'} yet
               </Text>
             </View>
@@ -205,7 +220,7 @@ export default function ConversationsScreen({ navigation }: any) {
       </View>
       {(user?.role === 'organization' || user?.role === 'admin' || user?.role === 'mentor') && (
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
           onPress={() => navigation.navigate('SelectUser', { 
             mode: activeTab === 'conversations' ? 'conversation' : 'group' 
           })}
@@ -221,11 +236,9 @@ export default function ConversationsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   centerContainer: {
     flex: 1,
@@ -235,7 +248,6 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
     paddingTop: 5,
   },
   fab: {
@@ -245,7 +257,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5,
@@ -267,22 +278,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  activeTab: {
-    borderBottomColor: '#007AFF',
-  },
   tabText: {
     fontSize: 16,
-    color: '#666',
-  },
-  activeTabText: {
-    color: '#007AFF',
-    fontWeight: '600',
   },
   conversationItem: {
     flexDirection: 'row',
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   avatarContainer: {
     position: 'relative',
@@ -297,7 +299,6 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -335,17 +336,14 @@ const styles = StyleSheet.create({
   conversationName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1a1a1a',
     flex: 1,
   },
   time: {
     fontSize: 12,
-    color: '#999',
     marginLeft: 8,
   },
   lastMessage: {
     fontSize: 14,
-    color: '#666',
   },
   emptyContainer: {
     flex: 1,
@@ -355,7 +353,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
   },
 });
 

@@ -11,6 +11,7 @@ import './models/Group';
 import authRoutes from './routes/auth';
 import messageRoutes from './routes/messages';
 import userRoutes from './routes/users';
+import notificationRoutes from './routes/notifications';
 
 // Try multiple paths for .env file (works with ts-node)
 // Check root .env first (where user likely put it), then server directory
@@ -73,6 +74,7 @@ app.get('/api', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

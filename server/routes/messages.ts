@@ -813,5 +813,36 @@ router.delete('/groups/:groupId', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Get total unread message count
+router.get('/unread-count', async (req: AuthRequest, res: Response) => {
+  try {
+    const currentUserId = new Types.ObjectId(req.user!.id);
+
+    // Count unread direct messages
+    const unreadDirectMessages = await Message.countDocuments({
+      receiver: currentUserId,
+      isRead: false,
+      group: { $exists: false },
+    });
+
+    // Count unread group messages
+    const userGroups = await Group.find({ members: currentUserId }).select('_id').lean();
+    const groupIds = userGroups.map(group => (group._id as any).toString());
+
+    const unreadGroupMessages = await Message.countDocuments({
+      group: { $in: groupIds },
+      'readBy.user': { $ne: currentUserId },
+      sender: { $ne: currentUserId },
+    });
+
+    const totalUnread = unreadDirectMessages + unreadGroupMessages;
+
+    res.json({ totalUnread, unreadDirectMessages, unreadGroupMessages });
+  } catch (error: any) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch unread count' });
+  }
+});
+
 export default router;
 

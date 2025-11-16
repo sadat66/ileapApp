@@ -14,15 +14,42 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { messagesAPI } from '../config/api';
 import { Message, Conversation, Group } from '../types/message';
 import { format } from 'date-fns';
 import Header from '../components/Header';
 import * as ImagePicker from 'expo-image-picker';
 
+// Helper function to get initials from name
+const getInitials = (name: string): string => {
+  if (!name) return '?';
+  const words = name.trim().split(' ');
+  if (words.length === 1) {
+    return words[0].charAt(0).toUpperCase();
+  }
+  return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+};
+
+// Helper function to generate consistent color from name
+const getAvatarColor = (name: string): string => {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+    '#A8E6CF', '#DCEDC8', '#FFD3B6', '#FFAAA5',
+    '#FF9A9E', '#FECFEF', '#FAD0C4', '#DDA0DD',
+    '#98D8C8', '#F7DC6F', '#BB8FCE', '#74B9FF',
+    '#FD79A8', '#FDCB6E', '#00B894', '#6C5CE7',
+    '#A29BFE', '#00CEC9', '#0984E3', '#E17055',
+    '#D63031', '#E84393', '#636E72', '#2D3436'
+  ];
+  const seed = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return colors[seed % colors.length];
+};
+
 export default function ChatScreen({ route, navigation }: any) {
   const { userId, isGroup } = route.params;
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -163,53 +190,98 @@ export default function ChatScreen({ route, navigation }: any) {
     const isMyMessage = item.sender._id === user?.id;
     const messageDate = new Date(item.createdAt);
     const showDate = true; // You can add logic to show date only when it changes
+    const senderName = item.sender.organization_profile?.title || item.sender.name || 'Unknown';
+    const initials = getInitials(senderName);
+    const avatarColor = getAvatarColor(senderName);
 
     return (
       <View style={styles.messageContainer}>
         {showDate && (
           <View style={styles.dateSeparator}>
-            <Text style={styles.dateText}>
+            <Text style={[styles.dateText, { color: theme.colors.textTertiary, backgroundColor: theme.colors.surface }]}>
               {format(messageDate, 'MMM d, yyyy')}
             </Text>
           </View>
         )}
         <View
           style={[
-            styles.messageBubble,
-            isMyMessage ? styles.myMessage : styles.otherMessage,
+            styles.messageRow,
+            isMyMessage ? styles.myMessageRow : styles.otherMessageRow,
           ]}
         >
           {!isMyMessage && (
-            <Text style={styles.senderName}>{item.sender.name}</Text>
-          )}
-          
-          {/* Render media if present */}
-          {item.media && (
-            <View style={styles.mediaContainer}>
-              {item.media.type === 'image' ? (
+            <View style={[styles.avatarContainer, { backgroundColor: avatarColor }]}>
+              {item.sender.image ? (
                 <Image
-                  source={{ uri: item.media.url }}
-                  style={styles.mediaImage}
-                  resizeMode="cover"
+                  source={{ uri: item.sender.image }}
+                  style={styles.avatarImage}
                 />
               ) : (
-                <View style={styles.videoContainer}>
-                  <Text style={styles.videoPlaceholder}>📹 Video</Text>
-                  <Text style={styles.videoInfo}>{item.media.fileName || 'Video file'}</Text>
-                </View>
+                <Text style={styles.avatarText}>{initials}</Text>
               )}
             </View>
           )}
-          
-          {item.content && (
-            <Text style={isMyMessage ? styles.myMessageText : styles.otherMessageText}>
-              {item.content}
+          <View
+            style={[
+              styles.messageBubble,
+              isMyMessage 
+                ? [styles.myMessage, { backgroundColor: theme.colors.messageBubble }]
+                : [styles.otherMessage, { backgroundColor: theme.colors.messageBubbleOther }],
+            ]}
+          >
+            {!isMyMessage && (
+              <Text style={[styles.senderName, { color: theme.colors.textSecondary }]}>{senderName}</Text>
+            )}
+            
+            {/* Render media if present */}
+            {item.media && (
+              <View style={styles.mediaContainer}>
+                {item.media.type === 'image' ? (
+                  <Image
+                    source={{ uri: item.media.url }}
+                    style={styles.mediaImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.videoContainer}>
+                    <Text style={styles.videoPlaceholder}>📹 Video</Text>
+                    <Text style={styles.videoInfo}>{item.media.fileName || 'Video file'}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            
+            {item.content && (
+              <Text style={isMyMessage 
+                ? [styles.myMessageText, { color: theme.colors.messageBubbleText }]
+                : [styles.otherMessageText, { color: theme.colors.messageBubbleOtherText }]
+              }>
+                {item.content}
+              </Text>
+            )}
+            
+            <Text style={[
+              styles.messageTime, 
+              { color: isMyMessage 
+                ? 'rgba(255, 255, 255, 0.7)' 
+                : theme.colors.textTertiary 
+              }
+            ]}>
+              {format(messageDate, 'h:mm a')}
             </Text>
+          </View>
+          {isMyMessage && (
+            <View style={[styles.avatarContainer, { backgroundColor: avatarColor }]}>
+              {item.sender.image ? (
+                <Image
+                  source={{ uri: item.sender.image }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+            </View>
           )}
-          
-          <Text style={[styles.messageTime, !isMyMessage && styles.otherMessageTime]}>
-            {format(messageDate, 'h:mm a')}
-          </Text>
         </View>
       </View>
     );
@@ -225,8 +297,8 @@ export default function ChatScreen({ route, navigation }: any) {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={[styles.centerContainer, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
@@ -235,11 +307,38 @@ export default function ChatScreen({ route, navigation }: any) {
     ? (conversation as Group)?.name || 'Group'
     : (conversation as Conversation)?.user?.name || 'User';
 
+  const dynamicStyles = {
+    safeArea: { backgroundColor: theme.colors.background },
+    container: { backgroundColor: theme.colors.surface },
+    messagesList: { padding: 15 },
+    dateText: { 
+      color: theme.colors.textTertiary, 
+      backgroundColor: theme.colors.surface 
+    },
+    messageBubbleMy: { backgroundColor: theme.colors.messageBubble },
+    messageBubbleOther: { backgroundColor: theme.colors.messageBubbleOther },
+    myMessageText: { color: theme.colors.messageBubbleText },
+    otherMessageText: { color: theme.colors.messageBubbleOtherText },
+    senderName: { color: theme.colors.textSecondary },
+    messageTime: { color: theme.colors.textTertiary },
+    inputContainer: { 
+      backgroundColor: theme.colors.card, 
+      borderTopColor: theme.colors.border 
+    },
+    input: { 
+      backgroundColor: theme.colors.input, 
+      borderColor: theme.colors.border, 
+      color: theme.colors.inputText 
+    },
+    sendButton: { backgroundColor: theme.colors.primary },
+    emptyText: { color: theme.colors.textTertiary },
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, dynamicStyles.safeArea]} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
+        style={[styles.container, dynamicStyles.container]}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <Header
@@ -247,6 +346,9 @@ export default function ChatScreen({ route, navigation }: any) {
           onMenuPress={() => navigation.goBack()}
           isMenuOpen={false}
           onHomePress={() => navigation.navigate('Conversations')}
+          onSettingsPress={isGroup ? () => navigation.navigate('GroupManagement', { groupId: userId }) : undefined}
+          showSettingsButton={isGroup}
+          showHomeButton={!isGroup}
         />
 
         <FlatList
@@ -254,17 +356,17 @@ export default function ChatScreen({ route, navigation }: any) {
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.messagesList}
+          contentContainerStyle={[styles.messagesList, dynamicStyles.messagesList]}
           style={styles.messagesContainer}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No messages yet</Text>
+              <Text style={[styles.emptyText, dynamicStyles.emptyText]}>No messages yet</Text>
             </View>
           }
         />
 
-        <SafeAreaView edges={['bottom']} style={styles.inputSafeArea}>
+        <SafeAreaView edges={['bottom']} style={[styles.inputSafeArea, { backgroundColor: theme.colors.card }]}>
           {/* Show selected media preview */}
           {selectedMedia && (
             <View style={styles.mediaPreview}>
@@ -278,7 +380,7 @@ export default function ChatScreen({ route, navigation }: any) {
             </View>
           )}
           
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, dynamicStyles.inputContainer]}>
             <TouchableOpacity
               style={styles.attachButton}
               onPress={showMediaOptions}
@@ -288,16 +390,18 @@ export default function ChatScreen({ route, navigation }: any) {
             </TouchableOpacity>
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, dynamicStyles.input]}
               value={messageText}
               onChangeText={setMessageText}
               placeholder="Type a message..."
+              placeholderTextColor={theme.colors.textTertiary}
               multiline
               editable={!isSending}
             />
             <TouchableOpacity
               style={[
                 styles.sendButton,
+                dynamicStyles.sendButton,
                 ((!messageText.trim() && !selectedMedia) || isSending) && styles.sendButtonDisabled
               ]}
               onPress={sendMessage}
@@ -319,11 +423,9 @@ export default function ChatScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   centerContainer: {
     flex: 1,
@@ -343,7 +445,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   inputSafeArea: {
-    backgroundColor: '#fff',
   },
   backButton: {
     fontSize: 16,
@@ -371,11 +472,42 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 12,
-    color: '#999',
-    backgroundColor: '#f5f5f5',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  myMessageRow: {
+    justifyContent: 'flex-end',
+  },
+  otherMessageRow: {
+    justifyContent: 'flex-start',
+  },
+  avatarContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   messageBubble: {
     maxWidth: '75%',
@@ -383,35 +515,26 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   myMessage: {
-    alignSelf: 'flex-end',
     backgroundColor: '#007AFF',
   },
   otherMessage: {
-    alignSelf: 'flex-start',
     backgroundColor: '#fff',
   },
   senderName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
     marginBottom: 4,
   },
   myMessageText: {
-    color: '#fff',
     fontSize: 16,
   },
   otherMessageText: {
-    color: '#1a1a1a',
     fontSize: 16,
   },
   messageTime: {
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 4,
     alignSelf: 'flex-end',
-  },
-  otherMessageTime: {
-    color: 'rgba(0, 0, 0, 0.5)',
   },
   mediaContainer: {
     marginBottom: 8,
@@ -479,15 +602,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 15,
     paddingBottom: 10,
-    backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
     alignItems: 'flex-end',
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 10,
@@ -496,7 +616,6 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   sendButton: {
-    backgroundColor: '#007AFF',
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -520,7 +639,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
   },
 });
 

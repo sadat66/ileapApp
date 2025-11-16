@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '../context/ThemeContext';
 import { usersAPI } from '../config/api';
 import { messagesAPI } from '../config/api';
 import Header from '../components/Header';
@@ -35,6 +36,7 @@ interface SelectUserScreenProps {
 
 export default function SelectUserScreen({ navigation, route }: SelectUserScreenProps) {
   const { mode, groupId } = route.params;
+  const { theme } = useTheme();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,14 +116,18 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
 
     return (
       <TouchableOpacity
-        style={[styles.userItem, isSelected && styles.selectedUserItem]}
+        style={[
+          styles.userItem, 
+          { borderBottomColor: theme.colors.border },
+          isSelected && { backgroundColor: theme.colors.secondary }
+        ]}
         onPress={() => toggleUserSelection(item._id)}
       >
         <View style={styles.avatarContainer}>
           {item.image ? (
             <Image source={{ uri: item.image }} style={styles.avatar} />
           ) : (
-            <View style={styles.avatarPlaceholder}>
+            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
               <Text style={styles.avatarText}>
                 {item.name.charAt(0).toUpperCase()}
               </Text>
@@ -129,16 +135,20 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
           )}
         </View>
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{item.name}</Text>
-          <Text style={styles.userEmail}>{item.email}</Text>
+          <Text style={[styles.userName, { color: theme.colors.text }]}>{item.name}</Text>
+          <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]}>{item.email}</Text>
           {item.role && (
-            <Text style={styles.userRole}>
+            <Text style={[styles.userRole, { color: theme.colors.primary }]}>
               {item.role.charAt(0).toUpperCase() + item.role.slice(1)}
             </Text>
           )}
         </View>
         {!isSingleSelect && (
-          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+          <View style={[
+            styles.checkbox, 
+            { borderColor: theme.colors.border },
+            isSelected && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+          ]}>
             {isSelected && <Text style={styles.checkmark}>✓</Text>}
           </View>
         )}
@@ -147,18 +157,26 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <Header
         title={mode === 'conversation' ? 'Select Volunteer' : groupId ? 'Add Members' : 'Create Group'}
         onMenuPress={() => navigation.goBack()}
         isMenuOpen={false}
         onHomePress={() => navigation.navigate('Conversations')}
       />
-      <View style={styles.container}>
-        <View style={styles.searchContainer}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.searchContainer, { borderBottomColor: theme.colors.border }]}>
           <TextInput
-            style={styles.searchInput}
+            style={[
+              styles.searchInput,
+              {
+                backgroundColor: theme.colors.input,
+                borderColor: theme.colors.border,
+                color: theme.colors.inputText,
+              }
+            ]}
             placeholder="Search volunteers..."
+            placeholderTextColor={theme.colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
@@ -166,12 +184,18 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
         </View>
 
         {mode === 'group' && selectedUsers.length > 0 && (
-          <View style={styles.selectedContainer}>
-            <Text style={styles.selectedText}>
+          <View style={[
+            styles.selectedContainer,
+            { 
+              backgroundColor: theme.colors.secondary,
+              borderBottomColor: theme.colors.border 
+            }
+          ]}>
+            <Text style={[styles.selectedText, { color: theme.colors.text }]}>
               {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''} selected
             </Text>
             <TouchableOpacity
-              style={styles.createButton}
+              style={[styles.createButton, { backgroundColor: theme.colors.primary }]}
               onPress={handleCreateGroup}
               disabled={isCreating}
             >
@@ -187,8 +211,8 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
         )}
 
         {isLoading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
+          <View style={[styles.centerContainer, { backgroundColor: theme.colors.background }]}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
           </View>
         ) : (
           <FlatList
@@ -198,7 +222,7 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No volunteers found</Text>
+                <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>No volunteers found</Text>
               </View>
             }
           />
@@ -211,11 +235,9 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   centerContainer: {
     flex: 1,
@@ -225,32 +247,25 @@ const styles = StyleSheet.create({
   searchContainer: {
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   searchInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    backgroundColor: '#f9f9f9',
   },
   selectedContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#f0f8ff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   selectedText: {
     fontSize: 14,
-    color: '#666',
     fontWeight: '500',
   },
   createButton: {
-    backgroundColor: '#007AFF',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
@@ -268,10 +283,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  selectedUserItem: {
-    backgroundColor: '#f0f8ff',
   },
   avatarContainer: {
     marginRight: 12,
@@ -285,7 +296,6 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -300,17 +310,14 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1a1a1a',
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 2,
   },
   userRole: {
     fontSize: 12,
-    color: '#007AFF',
     textTransform: 'capitalize',
   },
   checkbox: {
@@ -318,13 +325,8 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#ddd',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  checkboxSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
   },
   checkmark: {
     color: '#fff',
@@ -339,7 +341,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
   },
 });
 
