@@ -44,8 +44,23 @@ export default function ConversationsScreen({ navigation }: any) {
         messagesAPI.getGroups(),
         messagesAPI.getUnreadCount().catch(() => ({ totalUnread: 0 })),
       ]);
-      setConversations(conversationsData);
-      setGroups(groupsData);
+      
+      // Sort conversations by last message time (most recent first)
+      const sortedConversations = [...conversationsData].sort((a, b) => {
+        const aTime = new Date(a.lastMessage.createdAt).getTime();
+        const bTime = new Date(b.lastMessage.createdAt).getTime();
+        return bTime - aTime; // Descending order (most recent first)
+      });
+      
+      // Sort groups by last message time (most recent first)
+      const sortedGroups = [...groupsData].sort((a, b) => {
+        const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+        const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+        return bTime - aTime; // Descending order (most recent first)
+      });
+      
+      setConversations(sortedConversations);
+      setGroups(sortedGroups);
       setTotalUnreadCount(unreadData.totalUnread || 0);
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -250,6 +265,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingTop: 5,
   },
+  tab: {
+    flex: 1,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabText: {
+    fontSize: 16,
+  },
   fab: {
     position: 'absolute',
     bottom: 20,
@@ -270,16 +295,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     flexGrow: 1,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 15,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabText: {
-    fontSize: 16,
   },
   conversationItem: {
     flexDirection: 'row',

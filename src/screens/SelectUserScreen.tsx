@@ -42,6 +42,7 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [groupName, setGroupName] = useState('');
 
   useEffect(() => {
     loadUsers();
@@ -88,6 +89,11 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
       return;
     }
 
+    if (!groupId && !groupName.trim()) {
+      Alert.alert('Error', 'Please enter a group name');
+      return;
+    }
+
     try {
       setIsCreating(true);
       
@@ -97,9 +103,9 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
         Alert.alert('Success', 'Members added to group');
         navigation.goBack();
       } else {
-        // Create new group
-        const groupName = `Group with ${selectedUsers.length} member${selectedUsers.length > 1 ? 's' : ''}`;
-        const group = await messagesAPI.createGroup(groupName, '', selectedUsers);
+        // Create new group with custom name
+        const finalGroupName = groupName.trim() || `Group with ${selectedUsers.length} member${selectedUsers.length > 1 ? 's' : ''}`;
+        const group = await messagesAPI.createGroup(finalGroupName, '', selectedUsers);
         Alert.alert('Success', 'Group created successfully');
         navigation.navigate('Chat', { userId: group._id, isGroup: true });
       }
@@ -165,6 +171,27 @@ export default function SelectUserScreen({ navigation, route }: SelectUserScreen
         onHomePress={() => navigation.navigate('Conversations')}
       />
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {mode === 'group' && !groupId && (
+          <View style={[styles.groupNameContainer, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.groupNameLabel, { color: theme.colors.text }]}>Group Name</Text>
+            <TextInput
+              style={[
+                styles.groupNameInput,
+                {
+                  backgroundColor: theme.colors.input,
+                  borderColor: theme.colors.border,
+                  color: theme.colors.inputText,
+                }
+              ]}
+              placeholder="Enter group name..."
+              placeholderTextColor={theme.colors.textTertiary}
+              value={groupName}
+              onChangeText={setGroupName}
+              autoCapitalize="words"
+              maxLength={100}
+            />
+          </View>
+        )}
         <View style={[styles.searchContainer, { borderBottomColor: theme.colors.border }]}>
           <TextInput
             style={[
@@ -243,6 +270,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  groupNameContainer: {
+    padding: 15,
+    borderBottomWidth: 1,
+  },
+  groupNameLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  groupNameInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
   },
   searchContainer: {
     padding: 15,

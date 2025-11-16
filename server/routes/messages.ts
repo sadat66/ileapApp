@@ -104,6 +104,9 @@ router.get('/conversations', async (req: AuthRequest, res: Response) => {
           unreadCount: 1,
         },
       },
+      {
+        $sort: { 'lastMessage.createdAt': -1 },
+      },
     ]);
 
     res.json(conversations);
@@ -327,6 +330,13 @@ router.get('/groups', async (req: AuthRequest, res: Response) => {
         };
       })
     );
+
+    // Sort groups by last message time (most recent first)
+    groupsWithMessages.sort((a, b) => {
+      const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+      const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+      return bTime - aTime; // Descending order (most recent first)
+    });
 
     res.json(groupsWithMessages);
   } catch (error: any) {
