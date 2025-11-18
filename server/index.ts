@@ -38,7 +38,7 @@ if (!envLoaded) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 // Middleware
 app.use(cors({
@@ -90,10 +90,11 @@ const startServer = async () => {
     // Connect to database
     await connectToDatabase();
     
-    // Start Express server
-    app.listen(PORT, () => {
+    // Start Express server - listen on 0.0.0.0 to allow access from emulator/network
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 iLeap Mobile API Server running on port ${PORT}`);
       console.log(`📡 API endpoints available at http://localhost:${PORT}/api`);
+      console.log(`📱 Accessible from Android emulator at http://10.0.2.2:${PORT}/api`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

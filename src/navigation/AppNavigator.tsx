@@ -1,8 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
-import { useNotifications } from '../context/NotificationContext';
 import LoginScreen from '../screens/LoginScreen';
 import ConversationsScreen from '../screens/ConversationsScreen';
 import ChatScreen from '../screens/ChatScreen';
@@ -16,28 +15,9 @@ const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
-  const { lastNotificationResponse } = useNotifications();
   const navigationRef = useRef<any>(null);
 
-  useEffect(() => {
-    // Handle notification tap navigation
-    if (lastNotificationResponse && navigationRef.current && isAuthenticated) {
-      const data = lastNotificationResponse.notification.request.content.data;
-      
-      // Navigate based on notification type
-      if (data?.type === 'message' || data?.type === 'group_message') {
-        const userId = data.userId || data.groupId;
-        const isGroup = data.type === 'group_message';
-        
-        if (userId) {
-          // Small delay to ensure navigation is ready
-          setTimeout(() => {
-            navigationRef.current?.navigate('Chat', { userId, isGroup });
-          }, 100);
-        }
-      }
-    }
-  }, [lastNotificationResponse, isAuthenticated]);
+  // Notification tap navigation disabled (push notifications removed)
 
   if (isLoading) {
     return (

@@ -19,7 +19,6 @@ import { messagesAPI } from '../config/api';
 import { Message, Conversation, Group } from '../types/message';
 import { format } from 'date-fns';
 import Header from '../components/Header';
-import * as ImagePicker from 'expo-image-picker';
 
 // Helper function to get initials from name
 const getInitials = (name: string): string => {
@@ -55,7 +54,6 @@ export default function ChatScreen({ route, navigation }: any) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [conversation, setConversation] = useState<Conversation | Group | null>(null);
-  const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -94,93 +92,25 @@ export default function ChatScreen({ route, navigation }: any) {
     }
   };
 
-  const requestMediaPermissions = async () => {
-    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-    const { status: libraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (cameraStatus !== 'granted' || libraryStatus !== 'granted') {
-      Alert.alert('Permission Required', 'We need camera and photo library access to send media.');
-      return false;
-    }
-    return true;
-  };
-
-  const pickImage = async () => {
-    const hasPermission = await requestMediaPermissions();
-    if (!hasPermission) return;
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
-        allowsEditing: true,
-        quality: 0.8,
-        videoMaxDuration: 60, // 60 seconds max for videos
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setSelectedMedia(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image');
-    }
-  };
-
-  const takePhoto = async () => {
-    const hasPermission = await requestMediaPermissions();
-    if (!hasPermission) return;
-
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setSelectedMedia(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo');
-    }
-  };
-
-  const showMediaOptions = () => {
-    Alert.alert(
-      'Select Media',
-      'Choose an option',
-      [
-        { text: 'Camera', onPress: takePhoto },
-        { text: 'Photo Library', onPress: pickImage },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
-
   const sendMessage = async () => {
-    if ((!messageText.trim() && !selectedMedia) || isSending) return;
+    if (!messageText.trim() || isSending) return;
 
     const content = messageText.trim();
-    const mediaUri = selectedMedia;
-    
     setMessageText('');
-    setSelectedMedia(null);
     setIsSending(true);
 
     try {
       if (isGroup) {
-        await messagesAPI.sendGroupMessage(userId, content, mediaUri || undefined);
+        await messagesAPI.sendGroupMessage(userId, content);
       } else {
-        await messagesAPI.sendMessage(userId, content, mediaUri || undefined);
+        await messagesAPI.sendMessage(userId, content);
       }
       // Reload messages
       await loadMessages();
     } catch (error: any) {
       console.error('Error sending message:', error);
       Alert.alert('Error', error.message || 'Failed to send message');
-      // Restore media if sending failed
-      if (mediaUri) setSelectedMedia(mediaUri);
+      setMessageText(content);
     } finally {
       setIsSending(false);
     }
@@ -231,24 +161,6 @@ export default function ChatScreen({ route, navigation }: any) {
           >
             {!isMyMessage && (
               <Text style={[styles.senderName, { color: theme.colors.textSecondary }]}>{senderName}</Text>
-            )}
-            
-            {/* Render media if present */}
-            {item.media && (
-              <View style={styles.mediaContainer}>
-                {item.media.type === 'image' ? (
-                  <Image
-                    source={{ uri: item.media.url }}
-                    style={styles.mediaImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.videoContainer}>
-                    <Text style={styles.videoPlaceholder}>📹 Video</Text>
-                    <Text style={styles.videoInfo}>{item.media.fileName || 'Video file'}</Text>
-                  </View>
-                )}
-              </View>
             )}
             
             {item.content && (
@@ -367,28 +279,7 @@ export default function ChatScreen({ route, navigation }: any) {
         />
 
         <SafeAreaView edges={['bottom']} style={[styles.inputSafeArea, { backgroundColor: theme.colors.card }]}>
-          {/* Show selected media preview */}
-          {selectedMedia && (
-            <View style={styles.mediaPreview}>
-              <Image source={{ uri: selectedMedia }} style={styles.previewImage} />
-              <TouchableOpacity
-                style={styles.removeMediaButton}
-                onPress={() => setSelectedMedia(null)}
-              >
-                <Text style={styles.removeMediaText}>×</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          
           <View style={[styles.inputContainer, dynamicStyles.inputContainer]}>
-            <TouchableOpacity
-              style={styles.attachButton}
-              onPress={showMediaOptions}
-              disabled={isSending}
-            >
-              <Text style={styles.attachButtonText}>📎</Text>
-            </TouchableOpacity>
-            
             <TextInput
               style={[styles.input, dynamicStyles.input]}
               value={messageText}
@@ -402,10 +293,10 @@ export default function ChatScreen({ route, navigation }: any) {
               style={[
                 styles.sendButton,
                 dynamicStyles.sendButton,
-                ((!messageText.trim() && !selectedMedia) || isSending) && styles.sendButtonDisabled
+                (!messageText.trim() || isSending) && styles.sendButtonDisabled
               ]}
               onPress={sendMessage}
-              disabled={(!messageText.trim() && !selectedMedia) || isSending}
+              disabled={!messageText.trim() || isSending}
             >
               {isSending ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -535,68 +426,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 4,
     alignSelf: 'flex-end',
-  },
-  mediaContainer: {
-    marginBottom: 8,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  mediaImage: {
-    width: 250,
-    height: 250,
-    borderRadius: 12,
-  },
-  videoContainer: {
-    width: 250,
-    height: 150,
-    backgroundColor: '#000',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoPlaceholder: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
-  videoInfo: {
-    color: '#fff',
-    fontSize: 12,
-  },
-  mediaPreview: {
-    marginHorizontal: 15,
-    marginBottom: 10,
-    position: 'relative',
-    alignSelf: 'flex-start',
-  },
-  previewImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-  },
-  removeMediaButton: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: '#ff4444',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  removeMediaText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  attachButton: {
-    marginRight: 10,
-    padding: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  attachButtonText: {
-    fontSize: 24,
   },
   inputContainer: {
     flexDirection: 'row',

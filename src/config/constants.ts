@@ -12,7 +12,8 @@
 // Found IP: 192.168.1.103 (use this for Expo Go on physical device)
 // For Android emulator, use: http://10.0.2.2:3001
 // For iOS simulator, use: http://localhost:3001
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.103:3001';
+// Default to Android emulator address
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3001';
 
 // For production, update this to your deployed API server URL
 // export const API_BASE_URL = 'https://api.your-domain.com';

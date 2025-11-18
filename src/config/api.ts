@@ -18,11 +18,17 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // Don't override Content-Type if it's multipart/form-data (for file uploads)
-    if (config.headers['Content-Type'] === 'multipart/form-data') {
-      delete config.headers['Content-Type']; // Let axios set it automatically with boundary
-    }
     return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response) => {
+    return response;
   },
   (error) => {
     return Promise.reject(error);
@@ -59,7 +65,7 @@ export const authAPI = {
 
       const response = await apiClient.get('/api/auth/me');
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       // Token might be invalid, clear it
       await AsyncStorage.removeItem('auth_token');
       await AsyncStorage.removeItem('user');
@@ -77,169 +83,177 @@ export const authAPI = {
 // Messages endpoints - Using standalone REST API
 export const messagesAPI = {
   getConversations: async () => {
-    const response = await apiClient.get('/api/messages/conversations');
-    return response.data || [];
+    try {
+      const response = await apiClient.get('/api/messages/conversations');
+      return response.data || [];
+    } catch (error: any) {
+      throw error;
+    }
   },
   
   getMessages: async (userId: string, limit: number = 20, cursor?: string) => {
-    const params: any = { limit };
-    if (cursor) params.cursor = cursor;
-    const response = await apiClient.get(`/api/messages/messages/${userId}`, { params });
-    return response.data || { messages: [], nextCursor: null };
+    try {
+      const params: any = { limit };
+      if (cursor) params.cursor = cursor;
+      const response = await apiClient.get(`/api/messages/messages/${userId}`, { params });
+      return response.data || { messages: [], nextCursor: null };
+    } catch (error: any) {
+      throw error;
+    }
   },
   
-  sendMessage: async (receiverId: string, content: string, mediaUri?: string) => {
-    const formData = new FormData();
-    formData.append('receiverId', receiverId);
-    formData.append('content', content);
-    
-    if (mediaUri) {
-      // Extract file name and type from URI
-      const uriParts = mediaUri.split('/');
-      const fileName = uriParts[uriParts.length - 1] || 'media';
-      const fileExtension = fileName.split('.').pop() || 'jpg';
-      
-      // Determine mime type from extension
-      let mimeType = 'image/jpeg';
-      if (fileExtension === 'mp4' || fileExtension === 'mov' || fileExtension === 'avi') {
-        mimeType = 'video/mp4';
-      } else if (fileExtension === 'png') {
-        mimeType = 'image/png';
-      } else if (fileExtension === 'gif') {
-        mimeType = 'image/gif';
-      }
-      
-      formData.append('media', {
-        uri: mediaUri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+  sendMessage: async (receiverId: string, content: string) => {
+    try {
+      const response = await apiClient.post('/api/messages/messages', {
+        receiverId,
+        content,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
     }
-    
-    const response = await apiClient.post('/api/messages/messages', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
   },
   
   markAsRead: async (conversationId: string) => {
-    const response = await apiClient.post(`/api/messages/conversations/${conversationId}/read`);
-    return response.data;
+    try {
+      const response = await apiClient.post(`/api/messages/conversations/${conversationId}/read`);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
   
   getGroups: async () => {
-    const response = await apiClient.get('/api/messages/groups');
-    return response.data || [];
+    try {
+      const response = await apiClient.get('/api/messages/groups');
+      return response.data || [];
+    } catch (error: any) {
+      throw error;
+    }
   },
   
   getGroupMessages: async (groupId: string, limit: number = 20, cursor?: string) => {
-    const params: any = { limit };
-    if (cursor) params.cursor = cursor;
-    const response = await apiClient.get(`/api/messages/groups/${groupId}/messages`, { params });
-    return response.data || { messages: [], nextCursor: null };
+    try {
+      const params: any = { limit };
+      if (cursor) params.cursor = cursor;
+      const response = await apiClient.get(`/api/messages/groups/${groupId}/messages`, { params });
+      return response.data || { messages: [], nextCursor: null };
+    } catch (error: any) {
+      throw error;
+    }
   },
   
-  sendGroupMessage: async (groupId: string, content: string, mediaUri?: string) => {
-    const formData = new FormData();
-    formData.append('content', content);
-    
-    if (mediaUri) {
-      // Extract file name and type from URI
-      const uriParts = mediaUri.split('/');
-      const fileName = uriParts[uriParts.length - 1] || 'media';
-      const fileExtension = fileName.split('.').pop() || 'jpg';
-      
-      // Determine mime type from extension
-      let mimeType = 'image/jpeg';
-      if (fileExtension === 'mp4' || fileExtension === 'mov' || fileExtension === 'avi') {
-        mimeType = 'video/mp4';
-      } else if (fileExtension === 'png') {
-        mimeType = 'image/png';
-      } else if (fileExtension === 'gif') {
-        mimeType = 'image/gif';
-      }
-      
-      formData.append('media', {
-        uri: mediaUri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+  sendGroupMessage: async (groupId: string, content: string) => {
+    try {
+      const response = await apiClient.post(`/api/messages/groups/${groupId}/messages`, {
+        content,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
     }
-    
-    const response = await apiClient.post(`/api/messages/groups/${groupId}/messages`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
   },
 
   createGroup: async (name: string, description: string, memberIds: string[], isOrganizationGroup?: boolean, opportunityId?: string) => {
-    const response = await apiClient.post('/api/messages/groups', {
-      name,
-      description,
-      memberIds,
-      isOrganizationGroup,
-      opportunityId,
-    });
-    return response.data;
+    try {
+      const response = await apiClient.post('/api/messages/groups', {
+        name,
+        description,
+        memberIds,
+        isOrganizationGroup,
+        opportunityId,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 
   updateGroup: async (groupId: string, name?: string, description?: string) => {
-    const response = await apiClient.put(`/api/messages/groups/${groupId}`, {
-      name,
-      description,
-    });
-    return response.data;
+    try {
+      const response = await apiClient.put(`/api/messages/groups/${groupId}`, {
+        name,
+        description,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 
   addGroupMembers: async (groupId: string, memberIds: string[]) => {
-    const response = await apiClient.post(`/api/messages/groups/${groupId}/members`, {
-      memberIds,
-    });
-    return response.data;
+    try {
+      const response = await apiClient.post(`/api/messages/groups/${groupId}/members`, {
+        memberIds,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 
   removeGroupMember: async (groupId: string, memberId: string) => {
-    const response = await apiClient.delete(`/api/messages/groups/${groupId}/members/${memberId}`);
-    return response.data;
+    try {
+      const response = await apiClient.delete(`/api/messages/groups/${groupId}/members/${memberId}`);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 
   deleteGroup: async (groupId: string) => {
-    const response = await apiClient.delete(`/api/messages/groups/${groupId}`);
-    return response.data;
+    try {
+      const response = await apiClient.delete(`/api/messages/groups/${groupId}`);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 
   getUnreadCount: async () => {
-    const response = await apiClient.get('/api/messages/unread-count');
-    return response.data;
+    try {
+      const response = await apiClient.get('/api/messages/unread-count');
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 };
 
 // Users endpoints
 export const usersAPI = {
   getAvailableUsers: async (page: number = 1, limit: number = 50, search?: string) => {
-    const params: any = { page, limit };
-    if (search) params.search = search;
-    const response = await apiClient.get('/api/users/available', { params });
-    return response.data;
+    try {
+      const params: any = { page, limit };
+      if (search) params.search = search;
+      const response = await apiClient.get('/api/users/available', { params });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 };
 
 // Notifications endpoints
 export const notificationsAPI = {
   registerDeviceToken: async (expoPushToken: string) => {
-    const response = await apiClient.post('/api/notifications/register-token', {
-      expoPushToken,
-    });
-    return response.data;
+    try {
+      const response = await apiClient.post('/api/notifications/register-token', {
+        expoPushToken,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 
   unregisterDeviceToken: async () => {
-    const response = await apiClient.post('/api/notifications/unregister-token');
-    return response.data;
+    try {
+      const response = await apiClient.post('/api/notifications/unregister-token');
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
   },
 };
 

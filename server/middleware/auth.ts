@@ -10,7 +10,6 @@ export interface AuthRequest extends Request {
     role: string;
     image?: string;
   };
-  file?: Express.Multer.File;
 }
 
 export const authenticate = async (

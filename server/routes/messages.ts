@@ -5,8 +5,6 @@ import { Group } from '../models/Group';
 import { User } from '../models/User';
 import { OpportunityMentor } from '../models/OpportunityMentor';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { upload, getFileType, getFileUrl } from '../middleware/upload';
-import fs from 'fs';
 
 const router = express.Router();
 
@@ -178,16 +176,13 @@ router.get('/messages/:userId', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Send message (with optional media)
-router.post('/messages', upload.single('media'), async (req: AuthRequest, res: Response) => {
+// Send message
+router.post('/messages', async (req: AuthRequest, res: Response) => {
   try {
     const { receiverId, content } = req.body;
 
     if (!receiverId || !content) {
-      // If there's a file but no content, allow empty content for media-only messages
-      if (!req.file) {
-        return res.status(400).json({ error: 'Receiver ID and content are required' });
-      }
+      return res.status(400).json({ error: 'Receiver ID and content are required' });
     }
 
     const senderId = new Types.ObjectId(req.user!.id);
@@ -196,10 +191,6 @@ router.post('/messages', upload.single('media'), async (req: AuthRequest, res: R
     // Get sender user to check role
     const sender = await User.findById(senderId);
     if (!sender) {
-      // Clean up uploaded file if user not found
-      if (req.file) {
-        fs.unlinkSync(req.file.path);
-      }
       return res.status(404).json({ error: 'Sender not found' });
     }
 
@@ -216,10 +207,6 @@ router.post('/messages', upload.single('media'), async (req: AuthRequest, res: R
     if (!existingMessages) {
       const canInitiate = sender.role === 'organization' || sender.role === 'admin' || sender.role === 'mentor';
       if (!canInitiate) {
-        // Clean up uploaded file if permission denied
-        if (req.file) {
-          fs.unlinkSync(req.file.path);
-        }
         return res.status(403).json({ 
           error: 'Only organizations, admins, and mentors can initiate new conversations. Volunteers can only reply to existing conversations.' 
         });
@@ -230,19 +217,8 @@ router.post('/messages', upload.single('media'), async (req: AuthRequest, res: R
     const messageData: any = {
       sender: senderId,
       receiver: receiverIdObj,
-      content: content || (req.file ? `Sent ${req.file.mimetype.startsWith('image/') ? 'an image' : 'a video'}` : ''),
+      content: content,
     };
-
-    // Add media if file was uploaded
-    if (req.file) {
-      messageData.media = {
-        url: getFileUrl(req.file.filename),
-        type: getFileType(req.file.mimetype),
-        mimeType: req.file.mimetype,
-        fileName: req.file.originalname,
-        size: req.file.size,
-      };
-    }
 
     const message = await Message.create(messageData);
 
@@ -252,14 +228,6 @@ router.post('/messages', upload.single('media'), async (req: AuthRequest, res: R
 
     res.json(populatedMessage);
   } catch (error: any) {
-    // Clean up uploaded file on error
-    if (req.file) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (unlinkError) {
-        console.error('Error deleting uploaded file:', unlinkError);
-      }
-    }
     console.error('Send message error:', error);
     res.status(500).json({ error: error.message || 'Failed to send message' });
   }
@@ -408,14 +376,14 @@ router.get('/groups/:groupId/messages', async (req: AuthRequest, res: Response) 
   }
 });
 
-// Send group message (with optional media)
-router.post('/groups/:groupId/messages', upload.single('media'), async (req: AuthRequest, res: Response) => {
+// Send group message
+router.post('/groups/:groupId/messages', async (req: AuthRequest, res: Response) => {
   try {
     const { groupId } = req.params;
     const { content } = req.body;
 
-    if (!content && !req.file) {
-      return res.status(400).json({ error: 'Content or media is required' });
+    if (!content) {
+      return res.status(400).json({ error: 'Content is required' });
     }
 
     const currentUserId = new Types.ObjectId(req.user!.id);
@@ -423,10 +391,6 @@ router.post('/groups/:groupId/messages', upload.single('media'), async (req: Aut
 
     const group = await Group.findOne({ _id: groupIdObj, members: currentUserId });
     if (!group) {
-      // Clean up uploaded file if group not found
-      if (req.file) {
-        fs.unlinkSync(req.file.path);
-      }
       return res.status(404).json({ error: 'Group not found or you are not a member' });
     }
 
@@ -434,20 +398,9 @@ router.post('/groups/:groupId/messages', upload.single('media'), async (req: Aut
     const messageData: any = {
       sender: currentUserId,
       group: groupIdObj,
-      content: content || (req.file ? `Sent ${req.file.mimetype.startsWith('image/') ? 'an image' : 'a video'}` : ''),
+      content: content,
       readBy: [{ user: currentUserId }],
     };
-
-    // Add media if file was uploaded
-    if (req.file) {
-      messageData.media = {
-        url: getFileUrl(req.file.filename),
-        type: getFileType(req.file.mimetype),
-        mimeType: req.file.mimetype,
-        fileName: req.file.originalname,
-        size: req.file.size,
-      };
-    }
 
     const message = await Message.create(messageData);
 
@@ -458,14 +411,6 @@ router.post('/groups/:groupId/messages', upload.single('media'), async (req: Aut
 
     res.json(populatedMessage);
   } catch (error: any) {
-    // Clean up uploaded file on error
-    if (req.file) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (unlinkError) {
-        console.error('Error deleting uploaded file:', unlinkError);
-      }
-    }
     console.error('Send group message error:', error);
     res.status(500).json({ error: error.message || 'Failed to send group message' });
   }
