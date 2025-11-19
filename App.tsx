@@ -20,11 +20,11 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
+      <NotificationProvider>
       <AuthProvider>
-        <NotificationProvider>
           <AppContent />
+        </AuthProvider>
         </NotificationProvider>
-      </AuthProvider>
     </ThemeProvider>
   );
 }

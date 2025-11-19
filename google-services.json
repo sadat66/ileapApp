@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "343657431470",
+    "project_id": "ileapapp-f1289",
+    "storage_bucket": "ileapapp-f1289.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:343657431470:android:f143d1da74785d4226c83f",
+        "android_client_info": {
+          "package_name": "com.ileapapp.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGtu82nwg_aDCpFdNW36IrJh8nXqMVlUw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

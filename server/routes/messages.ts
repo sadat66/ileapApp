@@ -5,6 +5,7 @@ import { Group } from '../models/Group';
 import { User } from '../models/User';
 import { OpportunityMentor } from '../models/OpportunityMentor';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { sendPushNotification, sendPushNotifications } from '../helpers/pushNotifications';
 
 const router = express.Router();
 
@@ -226,6 +227,51 @@ router.post('/messages', async (req: AuthRequest, res: Response) => {
       .populate('sender', 'name image role')
       .lean();
 
+    // Send push notification to receiver
+    console.log(`🔔 ===== PUSH NOTIFICATION CHECK STARTED =====`);
+    console.log(`🔔 Message created successfully, checking for receiver: ${receiverIdObj}`);
+    console.log(`🔔 Sender: ${senderId}, Receiver: ${receiverIdObj}`);
+    
+    try {
+      const receiver = await User.findById(receiverIdObj).select('expoPushToken name');
+      console.log(`🔍 Checking push notification for receiver: ${receiverIdObj}`);
+      console.log(`🔍 Receiver found: ${!!receiver}, Has token: ${!!receiver?.expoPushToken}`);
+      
+      if (receiver && receiver.expoPushToken) {
+        const senderName = sender.name || 'Someone';
+        const messagePreview = content.length > 100 ? content.substring(0, 100) + '...' : content;
+        
+        console.log(`📤 Sending push notification to: ${receiver.name || receiverId}`);
+        console.log(`📤 Token: ${receiver.expoPushToken.substring(0, 20)}...`);
+        console.log(`📤 Title: ${senderName}, Body: ${messagePreview.substring(0, 50)}...`);
+        
+        await sendPushNotification(
+          receiver.expoPushToken,
+          senderName,
+          messagePreview,
+          {
+            type: 'message',
+            senderId: senderId.toString(),
+            receiverId: receiverId.toString(),
+            messageId: message._id.toString(),
+          }
+        );
+        console.log(`✅ Push notification sent to ${receiver.name || receiverId}`);
+      } else {
+        if (!receiver) {
+          console.warn(`⚠️ Receiver not found: ${receiverIdObj}`);
+        } else if (!receiver.expoPushToken) {
+          console.warn(`⚠️ Receiver ${receiver.name || receiverId} has no push token registered`);
+        }
+      }
+    } catch (pushError) {
+      // Don't fail the message send if push notification fails
+      console.error('❌ Error sending push notification:', pushError);
+      console.error('❌ Push error stack:', pushError instanceof Error ? pushError.stack : 'No stack trace');
+    }
+    
+    console.log(`🔔 ===== PUSH NOTIFICATION CHECK COMPLETED =====`);
+
     res.json(populatedMessage);
   } catch (error: any) {
     console.error('Send message error:', error);
@@ -408,6 +454,49 @@ router.post('/groups/:groupId/messages', async (req: AuthRequest, res: Response)
       .populate('sender', 'name image role')
       .populate('group', 'name')
       .lean();
+
+    // Send push notifications to all group members except the sender
+    try {
+      const sender = await User.findById(currentUserId).select('name');
+      const senderName = sender?.name || 'Someone';
+      const groupName = group.name || 'Group';
+      const messagePreview = content.length > 100 ? content.substring(0, 100) + '...' : content;
+
+      // Get all group members except the sender
+      const memberIds = group.members.filter(
+        (memberId: Types.ObjectId) => !memberId.equals(currentUserId)
+      );
+
+      if (memberIds.length > 0) {
+        // Get push tokens for all members
+        const members = await User.find({
+          _id: { $in: memberIds },
+          expoPushToken: { $exists: true, $ne: null },
+        }).select('expoPushToken name');
+
+        const pushTokens = members
+          .map(member => member.expoPushToken)
+          .filter((token): token is string => !!token);
+
+        if (pushTokens.length > 0) {
+          await sendPushNotifications(
+            pushTokens,
+            `${senderName} in ${groupName}`,
+            messagePreview,
+            {
+              type: 'group_message',
+              senderId: currentUserId.toString(),
+              groupId: groupId,
+              messageId: message._id.toString(),
+            }
+          );
+          console.log(`📱 Push notifications sent to ${pushTokens.length} group members`);
+        }
+      }
+    } catch (pushError) {
+      // Don't fail the message send if push notification fails
+      console.error('Error sending push notifications:', pushError);
+    }
 
     res.json(populatedMessage);
   } catch (error: any) {

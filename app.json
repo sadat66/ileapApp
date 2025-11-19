@@ -31,6 +31,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.ileapapp.mobile",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "RECEIVE_BOOT_COMPLETED"
       ]
@@ -43,6 +44,11 @@
       "color": "#ffffff",
       "iosDisplayInForeground": true,
       "androidMode": "default"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3d893c1a-25a8-41e2-b5ef-7e4f6275a5b6"
+      }
     }
   }
 }

@@ -9,6 +9,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
 // Add auth token to requests
@@ -31,6 +32,24 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
+    // Enhanced error logging for debugging
+    if (error.code === 'ECONNABORTED') {
+      console.error('⏱️ Request timeout - server took too long to respond');
+      console.error('API URL:', BASE_URL);
+    } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.error('🔌 Connection refused - is the server running?');
+      console.error('API URL:', BASE_URL);
+      console.error('Make sure:');
+      console.error('1. Backend server is running on port 3001');
+      console.error('2. Your phone and computer are on the same Wi-Fi network');
+      console.error('3. The IP address in constants.ts matches your computer\'s IP');
+    } else if (error.response) {
+      // Server responded with error status
+      console.error('❌ API Error:', error.response.status, error.response.data);
+    } else {
+      console.error('❌ Network Error:', error.message);
+      console.error('API URL:', BASE_URL);
+    }
     return Promise.reject(error);
   }
 );

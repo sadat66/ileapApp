@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from '../config/api';
+import { useNotifications } from './NotificationContext';
+import { notificationsAPI } from '../config/api';
 
 interface User {
   id: string;
@@ -24,6 +26,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Get notification registration function
+  // Note: This requires NotificationProvider to wrap AuthProvider in App.tsx
+  let registerForPushNotifications: (() => Promise<string | null>) | null = null;
+  try {
+    const notifications = useNotifications();
+    registerForPushNotifications = notifications.registerForPushNotifications;
+  } catch (error) {
+    // NotificationContext not available - this is okay, notifications just won't be registered
+    console.warn('NotificationContext not available:', error);
+  }
 
   useEffect(() => {
     checkAuth();
@@ -40,6 +53,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(user);
         // Verify token is still valid by fetching current user
         await refreshSession();
+        // Register for push notifications after successful auth check
+        if (registerForPushNotifications) {
+          try {
+            await registerForPushNotifications();
+          } catch (error) {
+            console.error('Error registering push notifications on auth check:', error);
+          }
+        }
       } else {
         setUser(null);
       }
@@ -94,6 +115,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           role: result.user.role || null,
           image: result.user.image,
         });
+        
+        // Register for push notifications after successful login
+        if (registerForPushNotifications) {
+          try {
+            await registerForPushNotifications();
+          } catch (error) {
+            console.error('Error registering push notifications on login:', error);
+          }
+        }
       } else {
         throw new Error('Login failed - no user data received');
       }
@@ -107,6 +137,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signOut = async () => {
     try {
+      // Unregister push token before signing out
+      try {
+        await notificationsAPI.unregisterDeviceToken();
+        console.log('✅ Push token unregistered');
+      } catch (error) {
+        console.error('Error unregistering push token:', error);
+      }
+      
       await authAPI.signOut();
       setUser(null);
       await AsyncStorage.removeItem('session');
