@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationContext';
 import { messagesAPI } from '../config/api';
 import { Conversation, Group } from '../types/message';
 import { formatDistanceToNow } from 'date-fns';
@@ -23,6 +24,7 @@ export default function ConversationsScreen({ navigation }: any) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user } = useAuth();
   const { theme } = useTheme();
+  const { testNotificationWithReply } = useNotifications();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -243,6 +245,14 @@ export default function ConversationsScreen({ navigation }: any) {
           <Plus size={24} color="#fff" />
         </TouchableOpacity>
       )}
+      {/* Debug: Test notification with reply - Remove in production */}
+      <TouchableOpacity
+        style={[styles.testButton, { backgroundColor: theme.colors.primary + '80' }]}
+        onPress={testNotificationWithReply}
+        onLongPress={() => console.log('Test notification button pressed')}
+      >
+        <Text style={styles.testButtonText}>🧪 Test Reply</Text>
+      </TouchableOpacity>
       <MenuDrawer visible={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </SafeAreaView>
   );
@@ -368,6 +378,20 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
+  },
+  testButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 1000,
+  },
+  testButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

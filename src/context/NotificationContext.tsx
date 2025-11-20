@@ -2,7 +2,54 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { notificationsAPI } from '../config/api';
+import { notificationsAPI, messagesAPI } from '../config/api';
+
+// Configure notification categories with reply actions
+const setupNotificationCategories = async () => {
+  try {
+    console.log('🔧 Setting up notification categories...');
+    
+    // Define notification category for messages with reply action
+    // For Android, we need to ensure the action is properly configured
+    const replyAction = {
+      identifier: 'REPLY',
+      buttonTitle: 'Reply',
+      textInput: {
+        submitButtonTitle: 'Send',
+        placeholder: 'Type a reply...',
+      },
+      options: {
+        opensAppToForeground: false, // Don't open app when replying
+      },
+    };
+    
+    await Notifications.setNotificationCategoryAsync('MESSAGE', [replyAction]);
+    console.log('✅ MESSAGE category configured');
+
+    // Define notification category for group messages with reply action
+    await Notifications.setNotificationCategoryAsync('GROUP_MESSAGE', [replyAction]);
+    console.log('✅ GROUP_MESSAGE category configured');
+
+    // Verify categories were set
+    const categories = await Notifications.getNotificationCategoriesAsync();
+    console.log('📋 Registered categories:', categories.map(c => c.identifier));
+    
+    // Log category details for debugging
+    for (const category of categories) {
+      console.log(`📋 Category "${category.identifier}" has ${category.actions?.length || 0} action(s)`);
+      if (category.actions) {
+        category.actions.forEach(action => {
+          console.log(`  - Action: ${action.identifier} (${action.buttonTitle})`);
+        });
+      }
+    }
+    
+    console.log('✅ Notification categories with reply actions configured');
+  } catch (error) {
+    console.error('❌ Error setting up notification categories:', error);
+    console.error('❌ Error details:', error instanceof Error ? error.stack : error);
+  }
+};
 
 // Configure notification behavior: Show notifications in ALL app states
 // Notifications will show whether app is in foreground, background, or closed
@@ -26,6 +73,7 @@ interface NotificationContextType {
   lastNotificationResponse: Notifications.NotificationResponse | null;
   registerForPushNotifications: () => Promise<string | null>;
   sendLocalNotification: (title: string, body: string, data?: any) => Promise<void>;
+  testNotificationWithReply: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -38,6 +86,12 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   const responseListener = useRef<Notifications.Subscription>();
 
   useEffect(() => {
+    // Set up notification categories with reply actions FIRST
+    // This must happen before any notifications are received
+    setupNotificationCategories().catch(error => {
+      console.error('❌ Failed to setup notification categories:', error);
+    });
+
     // Set up notification listeners
     notificationListener.current = Notifications.addNotificationReceivedListener(async (notification) => {
       // This listener fires when a notification is received
@@ -48,17 +102,96 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       console.log('📱 Title:', notificationData.title);
       console.log('📱 Body:', notificationData.body);
       console.log('📱 Data:', JSON.stringify(notificationData.data, null, 2));
+      console.log('📱 Category ID:', notification.request.content.categoryId);
       console.log('📱 Full notification:', JSON.stringify(notification, null, 2));
       console.log('📱 =================================');
+      
+      // Check if category is set
+      const categoryId = notification.request.content.categoryId;
+      if (!categoryId) {
+        console.warn('⚠️ WARNING: Notification received without categoryId! Reply actions may not work.');
+        console.warn('⚠️ Notification data:', JSON.stringify(notificationData.data, null, 2));
+      } else {
+        console.log(`✅ Notification has categoryId: ${categoryId}`);
+        // Verify the category exists
+        const categories = await Notifications.getNotificationCategoriesAsync();
+        const categoryExists = categories.some(c => c.identifier === categoryId);
+        if (!categoryExists) {
+          console.warn(`⚠️ WARNING: Category "${categoryId}" not found! Setting up categories again...`);
+          await setupNotificationCategories();
+        }
+      }
       
       // Note: The notification handler with shouldShowBanner: true should display
       // floating notifications. The channel with MAX importance ensures heads-up display.
     });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      // This listener fires when user taps on a notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      // This listener fires when user taps on a notification or interacts with it
       setLastNotificationResponse(response);
-      console.log('📱 Notification tapped:', response);
+      console.log('📱 Notification response:', response);
+      
+      const { actionIdentifier, userText, notification } = response;
+      const notificationData = notification.request.content.data;
+      
+      // Handle reply action
+      if (actionIdentifier === 'REPLY' && userText) {
+        console.log('💬 Reply received:', userText);
+        console.log('💬 Notification data:', notificationData);
+        
+        const notificationId = notification.request.identifier;
+        
+        try {
+          // Extract sender/receiver information from notification data
+          // Handle both 'group_message' (mobile app) and 'groupMessage' (web portal) formats
+          if (notificationData?.type === 'message' && notificationData?.senderId) {
+            // Direct message reply
+            const senderId = notificationData.senderId;
+            await messagesAPI.sendMessage(senderId, userText);
+            console.log('✅ Reply sent successfully');
+          } else if ((notificationData?.type === 'group_message' || notificationData?.type === 'groupMessage') && notificationData?.groupId) {
+            // Group message reply
+            const groupId = notificationData.groupId;
+            await messagesAPI.sendGroupMessage(groupId, userText);
+            console.log('✅ Group reply sent successfully');
+          } else {
+            console.warn('⚠️ Unknown notification type or missing data:', notificationData);
+            return; // Don't dismiss if we couldn't process
+          }
+          
+          // Dismiss the notification after successful reply
+          // This stops the spinning/loading state in the notification panel
+          try {
+            if (notificationId) {
+              await Notifications.dismissNotificationAsync(notificationId);
+              console.log('✅ Notification dismissed after successful reply');
+            } else {
+              // If no specific ID, dismiss all (fallback)
+              await Notifications.dismissAllNotificationsAsync();
+              console.log('✅ All notifications dismissed after successful reply');
+            }
+          } catch (dismissError) {
+            console.warn('⚠️ Could not dismiss notification:', dismissError);
+            // Not critical - notification will auto-dismiss eventually
+          }
+          
+        } catch (error) {
+          console.error('❌ Error sending reply:', error);
+          // Show error notification but don't dismiss the original
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Reply Failed',
+              body: 'Could not send your reply. Please try again.',
+              sound: true,
+            },
+            trigger: null,
+          });
+        }
+      } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        // User tapped on notification (not a reply action)
+        console.log('📱 Notification tapped (opening chat)');
+        // Navigation will be handled by the AppNavigator if needed
+      }
     });
 
     return () => {
@@ -81,7 +214,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         // MAX importance ensures floating/heads-up notifications are displayed
         await Notifications.setNotificationChannelAsync('default', {
           name: 'Messages',
-          description: 'Notifications for new messages',
+          description: 'Notifications for new messages with reply actions',
           importance: Notifications.AndroidImportance.MAX, // MAX = Heads-up (floating) notifications
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#FF231F7C',
@@ -90,8 +223,15 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
           showBadge: true,
           // Additional settings for floating notifications
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          // Enable reply actions on Android
+          enableLights: true,
+          // Enable actions on lockscreen
+          bypassDnd: false,
         });
         console.log('✅ Android notification channel created with MAX importance (floating enabled)');
+        
+        // Also set up categories again after channel creation (Android needs this)
+        await setupNotificationCategories();
       }
 
       // Request permissions for push notifications
@@ -168,6 +308,41 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   };
 
+  const testNotificationWithReply = async (): Promise<void> => {
+    try {
+      console.log('🧪 Testing notification with reply action...');
+      
+      // Verify categories are set up
+      const categories = await Notifications.getNotificationCategoriesAsync();
+      console.log('📋 Available categories:', categories.map(c => c.identifier));
+      
+      // Use scheduleNotificationAsync - categoryId should work for both platforms
+      // Note: Local notifications may not show categoryId on Android, but push notifications will
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Test Message',
+          body: 'This is a test notification. Try replying!',
+          data: {
+            type: 'message',
+            // Use a valid MongoDB ObjectId format for testing (24 hex characters)
+            senderId: '000000000000000000000001',
+            receiverId: '000000000000000000000002',
+          },
+          categoryId: 'MESSAGE', // This should enable reply action
+          sound: true,
+        },
+        trigger: null, // Show immediately
+      });
+      
+      console.log('✅ Test notification sent with MESSAGE category');
+      console.log('💡 Check your notification - it should have a "Reply" button');
+      console.log('💡 Note: Local test notifications may not show categoryId on Android');
+      console.log('💡 Push notifications from the server WILL include categoryId and show reply actions');
+    } catch (error) {
+      console.error('❌ Error sending test notification:', error);
+    }
+  };
+
   return (
     <NotificationContext.Provider
       value={{
@@ -176,6 +351,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         lastNotificationResponse,
         registerForPushNotifications,
         sendLocalNotification,
+        testNotificationWithReply,
       }}
     >
       {children}

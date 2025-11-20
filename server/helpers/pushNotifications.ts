@@ -10,7 +10,8 @@ export async function sendPushNotification(
   expoPushToken: string,
   title: string,
   body: string,
-  data?: any
+  data?: any,
+  categoryId?: string
 ): Promise<void> {
   try {
     console.log(`🔔 sendPushNotification called with token: ${expoPushToken.substring(0, 20)}...`);
@@ -23,6 +24,11 @@ export async function sendPushNotification(
 
     console.log(`✅ Token is valid, creating notification message...`);
 
+    // Determine category based on notification type
+    // Handle both 'group_message' (mobile app) and 'groupMessage' (web portal) formats
+    const isGroupMessage = data?.type === 'group_message' || data?.type === 'groupMessage';
+    const category = categoryId || (isGroupMessage ? 'GROUP_MESSAGE' : 'MESSAGE');
+
     // Create the message
     const message: ExpoPushMessage = {
       to: expoPushToken,
@@ -33,6 +39,7 @@ export async function sendPushNotification(
       priority: 'high', // High priority for important notifications
       channelId: 'default', // Android channel (must match channel created in app)
       badge: 1, // Set badge count
+      categoryId: category, // Enable reply actions
     };
 
     console.log(`📨 Notification message created:`, { title, body: body.substring(0, 50) + '...' });
@@ -77,7 +84,8 @@ export async function sendPushNotifications(
   expoPushTokens: string[],
   title: string,
   body: string,
-  data?: any
+  data?: any,
+  categoryId?: string
 ): Promise<void> {
   if (!expoPushTokens || expoPushTokens.length === 0) {
     return;
@@ -92,6 +100,11 @@ export async function sendPushNotifications(
   }
 
   try {
+    // Determine category based on notification type
+    // Handle both 'group_message' (mobile app) and 'groupMessage' (web portal) formats
+    const isGroupMessage = data?.type === 'group_message' || data?.type === 'groupMessage';
+    const category = categoryId || (isGroupMessage ? 'GROUP_MESSAGE' : 'MESSAGE');
+
     // Create messages for all tokens
     const messages: ExpoPushMessage[] = validTokens.map(token => ({
       to: token,
@@ -99,6 +112,9 @@ export async function sendPushNotifications(
       title,
       body,
       data: data || {},
+      categoryId: category, // Enable reply actions
+      priority: 'high',
+      channelId: 'default',
     }));
 
     // Send notifications in chunks
