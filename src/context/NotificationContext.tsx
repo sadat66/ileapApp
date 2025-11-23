@@ -73,7 +73,6 @@ interface NotificationContextType {
   lastNotificationResponse: Notifications.NotificationResponse | null;
   registerForPushNotifications: () => Promise<string | null>;
   sendLocalNotification: (title: string, body: string, data?: any) => Promise<void>;
-  testNotificationWithReply: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -308,41 +307,6 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   };
 
-  const testNotificationWithReply = async (): Promise<void> => {
-    try {
-      console.log('🧪 Testing notification with reply action...');
-      
-      // Verify categories are set up
-      const categories = await Notifications.getNotificationCategoriesAsync();
-      console.log('📋 Available categories:', categories.map(c => c.identifier));
-      
-      // Use scheduleNotificationAsync - categoryId should work for both platforms
-      // Note: Local notifications may not show categoryId on Android, but push notifications will
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Test Message',
-          body: 'This is a test notification. Try replying!',
-          data: {
-            type: 'message',
-            // Use a valid MongoDB ObjectId format for testing (24 hex characters)
-            senderId: '000000000000000000000001',
-            receiverId: '000000000000000000000002',
-          },
-          categoryId: 'MESSAGE', // This should enable reply action
-          sound: true,
-        },
-        trigger: null, // Show immediately
-      });
-      
-      console.log('✅ Test notification sent with MESSAGE category');
-      console.log('💡 Check your notification - it should have a "Reply" button');
-      console.log('💡 Note: Local test notifications may not show categoryId on Android');
-      console.log('💡 Push notifications from the server WILL include categoryId and show reply actions');
-    } catch (error) {
-      console.error('❌ Error sending test notification:', error);
-    }
-  };
-
   return (
     <NotificationContext.Provider
       value={{
@@ -351,7 +315,6 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         lastNotificationResponse,
         registerForPushNotifications,
         sendLocalNotification,
-        testNotificationWithReply,
       }}
     >
       {children}

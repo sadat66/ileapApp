@@ -24,7 +24,6 @@ export default function ConversationsScreen({ navigation }: any) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user } = useAuth();
   const { theme } = useTheme();
-  const { testNotificationWithReply } = useNotifications();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -214,26 +213,49 @@ export default function ConversationsScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={activeTab === 'conversations' ? conversations : groups}
-          renderItem={activeTab === 'conversations' ? renderConversationItem : renderGroupItem}
-          keyExtractor={(item) => item._id}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh}
-              tintColor={theme.colors.primary}
-            />
-          }
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>
-                No {activeTab === 'conversations' ? 'conversations' : 'groups'} yet
-              </Text>
-            </View>
-          }
-        />
+        {activeTab === 'conversations' ? (
+          <FlatList
+            data={conversations}
+            renderItem={renderConversationItem}
+            keyExtractor={(item) => item._id}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={onRefresh}
+                tintColor={theme.colors.primary}
+              />
+            }
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>
+                  No conversations yet
+                </Text>
+              </View>
+            }
+          />
+        ) : (
+          <FlatList
+            data={groups}
+            renderItem={renderGroupItem}
+            keyExtractor={(item) => item._id}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={onRefresh}
+                tintColor={theme.colors.primary}
+              />
+            }
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={[styles.emptyText, { color: theme.colors.textTertiary }]}>
+                  No groups yet
+                </Text>
+              </View>
+            }
+          />
+        )}
       </View>
       {(user?.role === 'organization' || user?.role === 'admin' || user?.role === 'mentor') && (
         <TouchableOpacity
@@ -245,14 +267,6 @@ export default function ConversationsScreen({ navigation }: any) {
           <Plus size={24} color="#fff" />
         </TouchableOpacity>
       )}
-      {/* Debug: Test notification with reply - Remove in production */}
-      <TouchableOpacity
-        style={[styles.testButton, { backgroundColor: theme.colors.primary + '80' }]}
-        onPress={testNotificationWithReply}
-        onLongPress={() => console.log('Test notification button pressed')}
-      >
-        <Text style={styles.testButtonText}>🧪 Test Reply</Text>
-      </TouchableOpacity>
       <MenuDrawer visible={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </SafeAreaView>
   );
@@ -378,20 +392,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-  },
-  testButton: {
-    position: 'absolute',
-    bottom: 80,
-    right: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    zIndex: 1000,
-  },
-  testButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
   },
 });
 
