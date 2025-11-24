@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import mongoose from 'mongoose';
 import connectToDatabase from './config/database';
 // Import models to ensure they're registered before routes use them
 import './models/User';
@@ -51,9 +52,25 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// Health check
+// Health check with database status
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'iLeap Mobile API Server is running' });
+  const dbStatus = mongoose.connection.readyState;
+  const statusMap: Record<number, string> = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  const dbStatusText = statusMap[dbStatus] || 'unknown';
+  
+  res.json({ 
+    status: 'ok', 
+    message: 'iLeap Mobile API Server is running',
+    database: {
+      status: dbStatusText,
+      connected: dbStatus === 1
+    }
+  });
 });
 
 // API root endpoint
@@ -87,18 +104,41 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Start server
 const startServer = async () => {
   try {
-    // Connect to database
-    await connectToDatabase();
+    // Try to connect to database, but don't fail if it's unavailable
+    // The connection handlers will retry automatically
+    try {
+      await connectToDatabase();
+    } catch (error) {
+      console.warn('⚠️  Could not connect to database on startup. Server will start anyway and retry connection.');
+      console.warn('⚠️  API endpoints that require database will fail until connection is restored.');
+    }
     
     // Start Express server - listen on 0.0.0.0 to allow access from emulator/network
+    // Server starts even if database connection failed - reconnection will handle it
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 iLeap Mobile API Server running on port ${PORT}`);
       console.log(`📡 API endpoints available at http://localhost:${PORT}/api`);
       console.log(`📱 Accessible from Android emulator at http://10.0.2.2:${PORT}/api`);
+      
+      // Check database connection status
+      const dbStatus = mongoose.connection.readyState;
+      if (dbStatus === 1) {
+        console.log('✅ Database: Connected');
+      } else {
+        console.warn('⚠️  Database: Not connected (will retry automatically)');
+      }
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
-    process.exit(1);
+    // Only exit if it's a critical error (like port already in use)
+    // Don't exit for database connection issues
+    if (error instanceof Error && error.message.includes('EADDRINUSE')) {
+      console.error('❌ Port is already in use. Please use a different port.');
+      process.exit(1);
+    } else {
+      console.error('❌ Server startup failed. Exiting...');
+      process.exit(1);
+    }
   }
 };
 
