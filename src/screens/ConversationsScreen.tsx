@@ -218,6 +218,7 @@ export default function ConversationsScreen({ navigation }: any) {
           data={activeTab === 'conversations' ? conversations : groups}
           renderItem={activeTab === 'conversations' ? renderConversationItem : renderGroupItem}
           keyExtractor={(item) => item._id}
+          style={{ flex: 1 }}
           refreshControl={
             <RefreshControl 
               refreshing={refreshing} 
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
   listContent: {
-    flexGrow: 1,
+    paddingBottom: 20,
   },
   conversationItem: {
     flexDirection: 'row',
