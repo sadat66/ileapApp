@@ -24,7 +24,7 @@ export default function ConversationsScreen({ navigation }: any) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user } = useAuth();
   const { theme } = useTheme();
-  const { testNotificationWithReply } = useNotifications();
+  // const { testNotificationWithReply } = useNotifications(); // Hidden for now, may need later for debugging
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -245,14 +245,14 @@ export default function ConversationsScreen({ navigation }: any) {
           <Plus size={24} color="#fff" />
         </TouchableOpacity>
       )}
-      {/* Debug: Test notification with reply - Remove in production */}
-      <TouchableOpacity
+      {/* Debug: Test notification with reply - Hidden for now, may need later for debugging */}
+      {/* <TouchableOpacity
         style={[styles.testButton, { backgroundColor: theme.colors.primary + '80' }]}
         onPress={testNotificationWithReply}
         onLongPress={() => console.log('Test notification button pressed')}
       >
         <Text style={styles.testButtonText}>🧪 Test Reply</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
       <MenuDrawer visible={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </SafeAreaView>
   );
