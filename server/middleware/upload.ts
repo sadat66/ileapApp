@@ -53,9 +53,12 @@ export const getFileType = (mimeType: string): 'image' | 'video' => {
 
 // Helper to get public URL for uploaded file
 export const getFileUrl = (filename: string): string => {
-  // In production, this should return a CDN or cloud storage URL
-  // For now, return a local URL that the mobile app can access
-  const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+  // In production (Vercel), use the deployed URL
+  // For local development, use the local server URL
+  const baseUrl = process.env.API_BASE_URL || 
+    (process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : `http://localhost:${process.env.PORT || 3001}`);
   return `${baseUrl}/uploads/messages/${filename}`;
 };
 

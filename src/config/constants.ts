@@ -16,10 +16,14 @@
 // You can override this with EXPO_PUBLIC_API_URL environment variable
 // Example: EXPO_PUBLIC_API_URL=http://192.168.1.103:3001 npm start
 
-// Default to physical device IP (update this to your computer's IP)
-// Current detected IP: 192.168.1.103
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.103:3001';
+// Production API URL - deployed on Vercel
+const PRODUCTION_API_URL = 'https://ileapbackend.vercel.app';
 
-// For production, update this to your deployed API server URL
-// export const API_BASE_URL = 'https://api.your-domain.com';
+// Development API URL - also using Vercel backend
+const DEVELOPMENT_API_URL = 'https://ileapbackend.vercel.app';
+
+// Default to Vercel backend URL
+// To use local development server, set EXPO_PUBLIC_API_URL environment variable
+// Example: EXPO_PUBLIC_API_URL=http://192.168.1.103:3001 npm start
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || PRODUCTION_API_URL;
 

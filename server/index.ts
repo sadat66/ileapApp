@@ -42,7 +42,9 @@ const PORT = Number(process.env.PORT) || 3001;
 
 // Middleware
 app.use(cors({
-  origin: '*', // Allow all origins in development
+  origin: process.env.VERCEL 
+    ? ['https://ileapbackend.vercel.app', process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '*']
+    : '*', // Allow all origins in development
   credentials: true,
 }));
 app.use(express.json());
@@ -84,8 +86,31 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start server
+// Initialize database connection (will be called when needed)
+let dbInitialized = false;
+const initializeDatabase = async () => {
+  if (!dbInitialized) {
+    try {
+      await connectToDatabase();
+      dbInitialized = true;
+    } catch (error) {
+      console.error('❌ Failed to connect to database:', error);
+      // Don't throw - Mongoose will retry on first query
+    }
+  }
+};
+
+// Start server (only if not running on Vercel)
+// Vercel serverless functions don't need app.listen()
 const startServer = async () => {
+  // Skip starting server if running on Vercel
+  if (process.env.VERCEL) {
+    console.log('🚀 Running on Vercel - serverless mode');
+    // Initialize database connection for Vercel
+    await initializeDatabase();
+    return;
+  }
+
   try {
     // Connect to database
     await connectToDatabase();
@@ -102,7 +127,15 @@ const startServer = async () => {
   }
 };
 
-startServer();
+// Initialize database when module is loaded (for Vercel)
+if (process.env.VERCEL) {
+  initializeDatabase().catch(console.error);
+}
+
+// Only start server if this file is run directly (not imported)
+if (require.main === module) {
+  startServer();
+}
 
 export default app;
 
