@@ -58,8 +58,9 @@ export default function ChatScreen({ route, navigation }: any) {
 
   useEffect(() => {
     loadMessages();
-    // Poll for new messages every 5 seconds
-    const interval = setInterval(loadMessages, 5000);
+    // Poll for new messages every 30 seconds (reduced from 5 seconds)
+    // This reduces server load while still keeping messages relatively fresh
+    const interval = setInterval(loadMessages, 30000);
     return () => clearInterval(interval);
   }, [userId, isGroup]);
 

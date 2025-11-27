@@ -61,3 +61,5 @@ web-build/
 # Temporary files
 *.log
 *.tmp
+
+.vercel

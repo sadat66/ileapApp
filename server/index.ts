@@ -48,8 +48,35 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// File uploads removed - not needed for this deployment
+
+// Initialize database connection (for Vercel serverless)
+let dbConnected = false;
+const connectDbOnce = async () => {
+  if (!dbConnected) {
+    try {
+      await connectToDatabase();
+      dbConnected = true;
+    } catch (error) {
+      console.error('Database connection error:', error);
+      dbConnected = false;
+      throw error;
+    }
+  }
+};
+
+// Middleware to ensure database is connected before handling requests
+app.use(async (req, res, next) => {
+  // Only connect if not already connected (for Vercel serverless)
+  if (!dbConnected && process.env.VERCEL === '1') {
+    try {
+      await connectDbOnce();
+    } catch (error) {
+      return res.status(500).json({ error: 'Database connection failed' });
+    }
+  }
+  next();
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -84,7 +111,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start server
+// Start server (only for local development)
 const startServer = async () => {
   try {
     // Connect to database
@@ -102,7 +129,14 @@ const startServer = async () => {
   }
 };
 
-startServer();
+// Export app for Vercel serverless function
+// The api/index.ts will use this as the handler
 
+// Only start server if not in Vercel environment
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
+
+// Export the Express app for Vercel
 export default app;
 

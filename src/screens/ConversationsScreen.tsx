@@ -34,8 +34,9 @@ export default function ConversationsScreen({ navigation }: any) {
 
   useEffect(() => {
     loadData();
-    // Poll for new messages every 5 seconds
-    const interval = setInterval(loadData, 5000);
+    // Poll for new messages every 30 seconds (reduced from 5 seconds)
+    // This reduces server load while still keeping data relatively fresh
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, []);
 
