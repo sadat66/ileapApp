@@ -12,13 +12,15 @@ import {
   Image,
   Alert,
   Modal,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { messagesAPI } from '../config/api';
 import { Message, Conversation, Group } from '../types/message';
-import { format } from 'date-fns';
+import { format, isSameDay, isToday, isYesterday } from 'date-fns';
 import Header from '../components/Header';
 import { Smile, Send, X } from 'lucide-react-native';
 
@@ -62,25 +64,128 @@ export default function ChatScreen({ route, navigation }: any) {
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const isUserScrollingRef = useRef(false);
+  const isAtBottomRef = useRef(true);
+  const previousMessageCountRef = useRef(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const shouldScrollToBottomOnLoad = useRef(false);
 
-  useEffect(() => {
-    loadMessages();
-    // Poll for new messages every 5 seconds
-    const interval = setInterval(loadMessages, 5000);
-    return () => clearInterval(interval);
-  }, [userId, isGroup]);
-
-  const loadMessages = async () => {
+  // Check for new messages without resetting the list (for polling)
+  const checkForNewMessages = async () => {
+    // Don't check for new messages if user is actively scrolling or viewing older messages
+    if (isUserScrollingRef.current || isLoadingOlder) return;
+    
     try {
       let messagesData;
       if (isGroup) {
-        messagesData = await messagesAPI.getGroupMessages(userId);
+        messagesData = await messagesAPI.getGroupMessages(userId, 20);
       } else {
-        messagesData = await messagesAPI.getMessages(userId);
-        // Mark as read
+        messagesData = await messagesAPI.getMessages(userId, 20);
+      }
+      
+      const fetchedMessages = messagesData.messages || [];
+      
+      // Only update if there are actually new messages
+      if (fetchedMessages.length > 0 && messages.length > 0) {
+        const latestFetchedId = fetchedMessages[fetchedMessages.length - 1]._id;
+        const latestCurrentId = messages[messages.length - 1]._id;
+        
+        // Check if there are new messages (comparing latest message IDs)
+        if (latestFetchedId !== latestCurrentId) {
+          // Find the index of the latest current message in the fetched messages
+          const currentLatestIndex = fetchedMessages.findIndex((m: Message) => m._id === latestCurrentId);
+          
+          if (currentLatestIndex >= 0) {
+            // There are new messages after our current latest
+            const newMessages = fetchedMessages.slice(currentLatestIndex + 1);
+            if (newMessages.length > 0) {
+              // Append only new messages without resetting the list
+              // NO AUTO-SCROLL - let user stay where they are
+              // Filter out duplicates by checking existing message IDs
+              setMessages(prev => {
+                const existingIds = new Set(prev.map((m: Message) => m._id));
+                const uniqueNewMessages = newMessages.filter((m: Message) => !existingIds.has(m._id));
+                if (uniqueNewMessages.length > 0) {
+                  previousMessageCountRef.current = prev.length + uniqueNewMessages.length;
+                  return [...prev, ...uniqueNewMessages];
+                }
+                return prev;
+              });
+              
+              // Mark as read only if user is at bottom (but don't auto-scroll)
+              if (isAtBottomRef.current && !isGroup) {
+                await messagesAPI.markAsRead(userId);
+              }
+            }
+          } else {
+            // Latest message not found - might be a new conversation, do a full refresh only if at bottom
+            if (isAtBottomRef.current) {
+              setMessages(fetchedMessages);
+              setNextCursor(messagesData.nextCursor || null);
+              setHasMoreMessages(!!messagesData.nextCursor);
+              previousMessageCountRef.current = fetchedMessages.length;
+            }
+          }
+        }
+      } else if (fetchedMessages.length > messages.length && isAtBottomRef.current) {
+        // Initial load case or messages were cleared
+        setMessages(fetchedMessages);
+        setNextCursor(messagesData.nextCursor || null);
+        setHasMoreMessages(!!messagesData.nextCursor);
+        previousMessageCountRef.current = fetchedMessages.length;
+      }
+    } catch (error) {
+      console.error('Error checking for new messages:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Reset refs when conversation changes
+    isUserScrollingRef.current = false;
+    isAtBottomRef.current = true;
+    previousMessageCountRef.current = 0;
+    setNextCursor(null);
+    setHasMoreMessages(true);
+    setMessages([]);
+    shouldScrollToBottomOnLoad.current = true; // Mark that we should scroll on initial load
+    
+    loadMessages(false); // Don't scroll here, we'll do it after messages render
+    // Poll for new messages every 5 seconds (only checks for new messages, doesn't reset)
+    const interval = setInterval(() => checkForNewMessages(), 5000);
+    return () => clearInterval(interval);
+  }, [userId, isGroup]);
+
+  const loadMessages = async (shouldScrollToBottom = false) => {
+    try {
+      let messagesData;
+      if (isGroup) {
+        messagesData = await messagesAPI.getGroupMessages(userId, 20);
+      } else {
+        messagesData = await messagesAPI.getMessages(userId, 20);
+        // Mark as read when loading messages
         await messagesAPI.markAsRead(userId);
       }
-      setMessages(messagesData.messages || []);
+      
+      const newMessages = messagesData.messages || [];
+      
+      // Remove duplicates by filtering unique IDs
+      const seenIds = new Set<string>();
+      const uniqueMessages = newMessages.filter((m: Message) => {
+        if (seenIds.has(m._id)) {
+          return false;
+        }
+        seenIds.add(m._id);
+        return true;
+      });
+      
+      setMessages(uniqueMessages);
+      setNextCursor(messagesData.nextCursor || null);
+      setHasMoreMessages(!!messagesData.nextCursor);
+      previousMessageCountRef.current = uniqueMessages.length;
+      
+      // Scroll will be handled by onContentSizeChange when messages render
       
       // Load conversation/group info
       if (!isGroup) {
@@ -96,6 +201,41 @@ export default function ChatScreen({ route, navigation }: any) {
       console.error('Error loading messages:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!nextCursor || isLoadingOlder || !hasMoreMessages) return;
+    
+    setIsLoadingOlder(true);
+    try {
+      let messagesData;
+      if (isGroup) {
+        messagesData = await messagesAPI.getGroupMessages(userId, 20, nextCursor);
+      } else {
+        messagesData = await messagesAPI.getMessages(userId, 20, nextCursor);
+      }
+      
+      const olderMessages = messagesData.messages || [];
+      if (olderMessages.length > 0) {
+        // Prepend older messages to the existing messages, filtering out duplicates
+        setMessages(prev => {
+          const existingIds = new Set(prev.map((m: Message) => m._id));
+          const uniqueOlderMessages = olderMessages.filter((m: Message) => !existingIds.has(m._id));
+          if (uniqueOlderMessages.length > 0) {
+            return [...uniqueOlderMessages, ...prev];
+          }
+          return prev;
+        });
+        setNextCursor(messagesData.nextCursor || null);
+        setHasMoreMessages(!!messagesData.nextCursor);
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (error) {
+      console.error('Error loading older messages:', error);
+    } finally {
+      setIsLoadingOlder(false);
     }
   };
 
@@ -236,8 +376,8 @@ export default function ChatScreen({ route, navigation }: any) {
       } else {
         await messagesAPI.sendMessage(userId, content);
       }
-      // Reload messages
-      await loadMessages();
+      // Reload messages after sending (no auto-scroll - user stays where they are)
+      await loadMessages(false);
     } catch (error: any) {
       console.error('Error sending message:', error);
       Alert.alert('Error', error.message || 'Failed to send message');
@@ -247,10 +387,31 @@ export default function ChatScreen({ route, navigation }: any) {
     }
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMyMessage = item.sender._id === user?.id;
     const messageDate = new Date(item.createdAt);
-    const showDate = true; // You can add logic to show date only when it changes
+    
+    // Show date separator only when the day changes
+    // Check if this is the first message or if the previous message was on a different day
+    const previousMessage = index > 0 ? messages[index - 1] : null;
+    const previousMessageDate = previousMessage ? new Date(previousMessage.createdAt) : null;
+    
+    // Show date if:
+    // 1. This is the first message (index === 0), OR
+    // 2. The previous message was on a different day
+    const showDate = !previousMessageDate || !isSameDay(messageDate, previousMessageDate);
+    
+    // Format date with smart labels (Today, Yesterday, or full date)
+    const getDateLabel = (date: Date): string => {
+      if (isToday(date)) {
+        return 'Today';
+      } else if (isYesterday(date)) {
+        return 'Yesterday';
+      } else {
+        return format(date, 'MMM d, yyyy');
+      }
+    };
+    
     const senderName = item.sender.organization_profile?.title || item.sender.name || 'Unknown';
     const initials = getInitials(senderName);
     const avatarColor = getAvatarColor(senderName);
@@ -266,7 +427,7 @@ export default function ChatScreen({ route, navigation }: any) {
                 backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'
               }
             ]}>
-              {format(messageDate, 'MMM d, yyyy')}
+              {getDateLabel(messageDate)}
             </Text>
           </View>
         )}
@@ -332,13 +493,46 @@ export default function ChatScreen({ route, navigation }: any) {
     );
   };
 
-  useEffect(() => {
-    if (messages.length > 0 && flatListRef.current) {
+  // Handle scroll events to track user position and load older messages
+  const handleScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const paddingToBottom = 100; // Threshold for "at bottom"
+    const isNearBottom = 
+      contentOffset.y + layoutMeasurement.height >= contentSize.height - paddingToBottom;
+    
+    isAtBottomRef.current = isNearBottom;
+    
+    // Load older messages when user scrolls near the top
+    const paddingToTop = 200; // Threshold for "near top"
+    const isNearTop = contentOffset.y <= paddingToTop;
+    
+    if (isNearTop && hasMoreMessages && !isLoadingOlder && nextCursor) {
+      loadOlderMessages();
+    }
+  };
+
+  const handleScrollBeginDrag = () => {
+    isUserScrollingRef.current = true;
+  };
+
+  const handleScrollEndDrag = () => {
+    // Reset scrolling flag after a short delay
+    setTimeout(() => {
+      isUserScrollingRef.current = false;
+    }, 1000);
+  };
+
+  // Handle content size change to scroll to bottom on initial load
+  const handleContentSizeChange = () => {
+    // Scroll to bottom only on initial load (when opening conversation)
+    if (shouldScrollToBottomOnLoad.current && messages.length > 0) {
+      shouldScrollToBottomOnLoad.current = false; // Reset flag
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flatListRef.current?.scrollToEnd({ animated: false });
+        isAtBottomRef.current = true;
       }, 100);
     }
-  }, [messages]);
+  };
 
   if (isLoading) {
     return (
@@ -400,7 +594,30 @@ export default function ChatScreen({ route, navigation }: any) {
           keyExtractor={(item) => item._id}
           contentContainerStyle={styles.messagesList}
           style={styles.messagesContainer}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onScroll={handleScroll}
+          onScrollBeginDrag={handleScrollBeginDrag}
+          onScrollEndDrag={handleScrollEndDrag}
+          onContentSizeChange={handleContentSizeChange}
+          scrollEventThrottle={16}
+          ListHeaderComponent={
+            hasMoreMessages && !isLoadingOlder ? (
+              <TouchableOpacity
+                style={[styles.loadOlderButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={loadOlderMessages}
+              >
+                <Text style={[styles.loadOlderText, { color: theme.colors.primary }]}>
+                  Load older messages
+                </Text>
+              </TouchableOpacity>
+            ) : isLoadingOlder ? (
+              <View style={styles.loadOlderButton}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text style={[styles.loadOlderText, { color: theme.colors.textSecondary, marginLeft: 8 }]}>
+                  Loading older messages...
+                </Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyText, dynamicStyles.emptyText]}>No messages yet</Text>
@@ -481,27 +698,61 @@ export default function ChatScreen({ route, navigation }: any) {
             onRequestClose={() => setShowEmojiPicker(false)}
           >
             <View style={styles.emojiPickerOverlay}>
-              <View style={[styles.emojiPickerContainer, { backgroundColor: theme.colors.card }]}>
+              <View style={[
+                styles.emojiPickerContainer, 
+                { 
+                  backgroundColor: theme.colors.card,
+                  height: Dimensions.get('window').height * 0.7,
+                  maxHeight: 500,
+                }
+              ]}>
                 <View style={[styles.emojiPickerHeader, { borderBottomColor: theme.colors.border }]}>
                   <Text style={[styles.emojiPickerTitle, { color: theme.colors.text }]}>Select Emoji</Text>
                   <TouchableOpacity onPress={() => setShowEmojiPicker(false)}>
                     <X size={24} color={theme.colors.text} />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.emojiGrid}>
-                  {['😀', '😂', '🥰', '😍', '🤔', '😎', '👍', '❤️', '🔥', '🎉', '✅', '👏', '🙏', '💪', '🎊', '😊', '😉', '😋', '😘', '😗', '😙', '😚', '😛', '😜', '😝', '😞', '😟', '😠', '😡', '😢', '😣', '😤', '😥', '😦', '😧', '😨', '😩', '😪', '😫', '😬', '😭', '😮', '😯', '😰', '😱', '😲', '😳', '😴', '😵', '😶', '😷', '😸', '😹', '😺', '😻', '😼', '😽', '😾', '😿', '🙀'].map((emoji, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.emojiItem}
-                      onPress={() => {
-                        setMessageText(prev => prev + emoji);
-                        setShowEmojiPicker(false);
-                      }}
-                    >
-                      <Text style={styles.emojiText}>{emoji}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <ScrollView 
+                  style={styles.emojiScrollView}
+                  contentContainerStyle={styles.emojiGrid}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  {(() => {
+                    const screenWidth = Dimensions.get('window').width;
+                    const padding = 32; // 16px on each side
+                    const itemsPerRow = 8;
+                    const gap = 8; // Space between items
+                    const totalGaps = (itemsPerRow - 1) * gap;
+                    const itemWidth = (screenWidth - padding - totalGaps) / itemsPerRow;
+                    
+                    return ['😀', '😂', '🥰', '😍', '🤔', '😎', '👍', '❤️', '🔥', '🎉', '✅', '👏', '🙏', '💪', '🎊', '😊', '😉', '😋', '😘', '😗', '😙', '😚', '😛', '😜', '😝', '😞', '😟', '😠', '😡', '😢', '😣', '😤', '😥', '😦', '😧', '😨', '😩', '😪', '😫', '😬', '😭', '😮', '😯', '😰', '😱', '😲', '😳', '😴', '😵', '😶', '😷', '😸', '😹', '😺', '😻', '😼', '😽', '😾', '😿', '🙀'].map((emoji, index) => {
+                      const isLastInRow = (index + 1) % itemsPerRow === 0;
+                      
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          style={[
+                            styles.emojiItem, 
+                            { 
+                              width: itemWidth, 
+                              height: itemWidth,
+                              marginRight: isLastInRow ? 0 : gap,
+                              marginBottom: gap,
+                            }
+                          ]}
+                          onPress={() => {
+                            setMessageText(prev => prev + emoji);
+                            setShowEmojiPicker(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.emojiText}>{emoji}</Text>
+                        </TouchableOpacity>
+                      );
+                    });
+                  })()}
+                </ScrollView>
               </View>
             </View>
           </Modal>
@@ -751,8 +1002,6 @@ const styles = StyleSheet.create({
   emojiPickerContainer: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 20,
-    maxHeight: '50%',
   },
   emojiPickerHeader: {
     flexDirection: 'row',
@@ -766,20 +1015,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  emojiScrollView: {
+    flex: 1,
+  },
   emojiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 12,
+    padding: 16,
+    paddingBottom: 24,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
   },
   emojiItem: {
-    width: '12%',
-    aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 8,
   },
   emojiText: {
-    fontSize: 32,
+    fontSize: 28,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -789,6 +1044,21 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
+  },
+  loadOlderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginVertical: 8,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  loadOlderText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

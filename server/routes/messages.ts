@@ -239,12 +239,14 @@ router.post('/messages', async (req: AuthRequest, res: Response) => {
       
       if (receiver && receiver.expoPushToken) {
         const senderName = sender.name || 'Someone';
+        const senderImage = sender.image;
         const messagePreview = content.length > 100 ? content.substring(0, 100) + '...' : content;
         
-        console.log(`📤 Sending push notification to: ${receiver.name || receiverId}`);
+        console.log(`📤 Sending modern push notification to: ${receiver.name || receiverId}`);
         console.log(`📤 Token: ${receiver.expoPushToken.substring(0, 20)}...`);
         console.log(`📤 Title: ${senderName}, Body: ${messagePreview.substring(0, 50)}...`);
         
+        // Send WhatsApp-like notification with sender info
         await sendPushNotification(
           receiver.expoPushToken,
           senderName,
@@ -254,9 +256,15 @@ router.post('/messages', async (req: AuthRequest, res: Response) => {
             senderId: senderId.toString(),
             receiverId: receiverId.toString(),
             messageId: message._id.toString(),
+          },
+          undefined, // categoryId (auto-determined)
+          {
+            senderName: senderName,
+            senderImage: senderImage,
+            threadId: `chat_${senderId.toString()}_${receiverId.toString()}`,
           }
         );
-        console.log(`✅ Push notification sent to ${receiver.name || receiverId}`);
+        console.log(`✅ Modern push notification sent to ${receiver.name || receiverId}`);
       } else {
         if (!receiver) {
           console.warn(`⚠️ Receiver not found: ${receiverIdObj}`);
@@ -455,10 +463,11 @@ router.post('/groups/:groupId/messages', async (req: AuthRequest, res: Response)
       .populate('group', 'name')
       .lean();
 
-    // Send push notifications to all group members except the sender
+    // Send modern push notifications to all group members except the sender
     try {
-      const sender = await User.findById(currentUserId).select('name');
+      const sender = await User.findById(currentUserId).select('name image');
       const senderName = sender?.name || 'Someone';
+      const senderImage = sender?.image;
       const groupName = group.name || 'Group';
       const messagePreview = content.length > 100 ? content.substring(0, 100) + '...' : content;
 
@@ -479,18 +488,26 @@ router.post('/groups/:groupId/messages', async (req: AuthRequest, res: Response)
           .filter((token): token is string => !!token);
 
         if (pushTokens.length > 0) {
+          // Send WhatsApp-like group notifications with sender info
           await sendPushNotifications(
             pushTokens,
-            `${senderName} in ${groupName}`,
-            messagePreview,
+            `${senderName}`, // Title: sender name
+            messagePreview, // Body: message preview
             {
               type: 'group_message',
               senderId: currentUserId.toString(),
               groupId: groupId,
               messageId: message._id.toString(),
+            },
+            undefined, // categoryId (auto-determined)
+            {
+              subtitle: groupName, // Subtitle: group name (iOS)
+              senderName: senderName,
+              senderImage: senderImage,
+              threadId: `group_${groupId}`,
             }
           );
-          console.log(`📱 Push notifications sent to ${pushTokens.length} group members`);
+          console.log(`📱 Modern push notifications sent to ${pushTokens.length} group members`);
         }
       }
     } catch (pushError) {

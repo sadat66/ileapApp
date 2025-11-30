@@ -77,82 +77,159 @@ export default function ConversationsScreen({ navigation }: any) {
     loadData();
   };
 
+  // Helper function to get initials from name
+  const getInitials = (name: string): string => {
+    if (!name) return '?';
+    const words = name.trim().split(' ');
+    if (words.length === 1) {
+      return words[0].charAt(0).toUpperCase();
+    }
+    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+  };
+
+  // Helper function to generate consistent color from name
+  const getAvatarColor = (name: string): string => {
+    const colors = [
+      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+      '#A8E6CF', '#DCEDC8', '#FFD3B6', '#FFAAA5',
+      '#FF9A9E', '#FECFEF', '#FAD0C4', '#DDA0DD',
+      '#98D8C8', '#F7DC6F', '#BB8FCE', '#74B9FF',
+      '#FD79A8', '#FDCB6E', '#00B894', '#6C5CE7',
+      '#A29BFE', '#00CEC9', '#0984E3', '#E17055',
+      '#D63031', '#E84393', '#636E72', '#2D3436'
+    ];
+    const seed = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[seed % colors.length];
+  };
+
   const renderConversationItem = ({ item }: { item: Conversation }) => {
-    const timeAgo = formatDistanceToNow(new Date(item.lastMessage.createdAt), { addSuffix: true });
+    const messageDate = new Date(item.lastMessage.createdAt);
+    const isToday = messageDate.toDateString() === new Date().toDateString();
+    const timeAgo = isToday 
+      ? new Date(messageDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+      : formatDistanceToNow(messageDate, { addSuffix: true });
+    
+    const senderName = item.user.name || 'Unknown';
+    const initials = getInitials(senderName);
+    const avatarColor = getAvatarColor(senderName);
     
     return (
       <TouchableOpacity
-        style={[styles.conversationItem, { borderBottomColor: theme.colors.border }]}
+        style={[
+          styles.conversationItem, 
+          { 
+            backgroundColor: theme.isDark ? '#0B141A' : '#FFFFFF',
+            borderBottomColor: theme.isDark ? '#1E2428' : '#E4E6E9'
+          }
+        ]}
+        activeOpacity={0.7}
         onPress={() => navigation.navigate('Chat', { userId: item._id, isGroup: false })}
       >
         <View style={styles.avatarContainer}>
           {item.user.image ? (
             <Image source={{ uri: item.user.image }} style={styles.avatar} />
           ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
-              <Text style={styles.avatarText}>
-                {item.user.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
-          {item.unreadCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>
-                {item.unreadCount > 99 ? '99+' : item.unreadCount}
-              </Text>
+            <View style={[styles.avatarPlaceholder, { backgroundColor: avatarColor }]}>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
           )}
         </View>
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
             <Text style={[styles.conversationName, { color: theme.colors.text }]} numberOfLines={1}>
-              {item.user.name}
+              {senderName}
             </Text>
             <Text style={[styles.time, { color: theme.colors.textTertiary }]}>{timeAgo}</Text>
           </View>
-          <Text style={[styles.lastMessage, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-            {item.lastMessage.content}
-          </Text>
+          <View style={styles.lastMessageRow}>
+            <Text 
+              style={[
+                styles.lastMessage, 
+                { 
+                  color: item.unreadCount > 0 
+                    ? (theme.isDark ? theme.colors.text : '#000000')
+                    : theme.colors.textSecondary,
+                  fontWeight: item.unreadCount > 0 ? '500' : '400'
+                }
+              ]} 
+              numberOfLines={1}
+            >
+              {item.lastMessage.content}
+            </Text>
+            {item.unreadCount > 0 && (
+              <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+                <Text style={styles.badgeText}>
+                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
 
   const renderGroupItem = ({ item }: { item: Group }) => {
-    const timeAgo = item.lastMessage
-      ? formatDistanceToNow(new Date(item.lastMessage.createdAt), { addSuffix: true })
+    const messageDate = item.lastMessage ? new Date(item.lastMessage.createdAt) : null;
+    const isToday = messageDate && messageDate.toDateString() === new Date().toDateString();
+    const timeAgo = messageDate
+      ? (isToday 
+          ? messageDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+          : formatDistanceToNow(messageDate, { addSuffix: true }))
       : '';
+    
+    const groupName = item.name || 'Group';
+    const initials = getInitials(groupName);
+    const avatarColor = getAvatarColor(groupName);
     
     return (
       <TouchableOpacity
-        style={[styles.conversationItem, { borderBottomColor: theme.colors.border }]}
+        style={[
+          styles.conversationItem, 
+          { 
+            backgroundColor: theme.isDark ? '#0B141A' : '#FFFFFF',
+            borderBottomColor: theme.isDark ? '#1E2428' : '#E4E6E9'
+          }
+        ]}
+        activeOpacity={0.7}
         onPress={() => navigation.navigate('Chat', { userId: item._id, isGroup: true })}
       >
         <View style={styles.avatarContainer}>
-          <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.avatarText}>
-              {item.name.charAt(0).toUpperCase()}
-            </Text>
+          <View style={[styles.avatarPlaceholder, { backgroundColor: avatarColor }]}>
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          {item.unreadCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>
-                {item.unreadCount > 99 ? '99+' : item.unreadCount}
-              </Text>
-            </View>
-          )}
         </View>
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
             <Text style={[styles.conversationName, { color: theme.colors.text }]} numberOfLines={1}>
-              {item.name}
+              {groupName}
             </Text>
             {timeAgo && <Text style={[styles.time, { color: theme.colors.textTertiary }]}>{timeAgo}</Text>}
           </View>
           {item.lastMessage && (
-            <Text style={[styles.lastMessage, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-              {item.lastMessage.content}
-            </Text>
+            <View style={styles.lastMessageRow}>
+              <Text 
+                style={[
+                  styles.lastMessage, 
+                  { 
+                    color: item.unreadCount > 0 
+                      ? (theme.isDark ? theme.colors.text : '#000000')
+                      : theme.colors.textSecondary,
+                    fontWeight: item.unreadCount > 0 ? '500' : '400'
+                  }
+                ]} 
+                numberOfLines={1}
+              >
+                {item.lastMessage.content}
+              </Text>
+              {item.unreadCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={styles.badgeText}>
+                    {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           )}
         </View>
       </TouchableOpacity>
@@ -167,8 +244,10 @@ export default function ConversationsScreen({ navigation }: any) {
     );
   }
 
+  const chatBackground = theme.isDark ? '#0B141A' : '#FFFFFF';
+
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: chatBackground }]} edges={['top']}>
       <Header
         title="Conversations"
         onMenuPress={() => setIsMenuOpen(true)}
@@ -182,10 +261,22 @@ export default function ConversationsScreen({ navigation }: any) {
         showHomeButton={false}
         unreadCount={totalUnreadCount}
       />
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={[styles.tabContainer, { borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.container, { backgroundColor: chatBackground }]}>
+        <View style={[
+          styles.tabContainer, 
+          { 
+            borderBottomColor: theme.isDark ? '#1E2428' : '#E4E6E9',
+            backgroundColor: chatBackground
+          }
+        ]}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'conversations' && { borderBottomColor: theme.colors.primary }]}
+            style={[
+              styles.tab, 
+              activeTab === 'conversations' && { 
+                borderBottomColor: theme.colors.primary,
+                borderBottomWidth: 3
+              }
+            ]}
             onPress={() => setActiveTab('conversations')}
           >
             <Text
@@ -199,7 +290,13 @@ export default function ConversationsScreen({ navigation }: any) {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'groups' && { borderBottomColor: theme.colors.primary }]}
+            style={[
+              styles.tab, 
+              activeTab === 'groups' && { 
+                borderBottomColor: theme.colors.primary,
+                borderBottomWidth: 3
+              }
+            ]}
             onPress={() => setActiveTab('groups')}
           >
             <Text
@@ -273,12 +370,12 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    paddingTop: 5,
+    borderBottomWidth: 0.5,
+    paddingTop: 0,
   },
   tab: {
     flex: 1,
-    paddingVertical: 15,
+    paddingVertical: 14,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
@@ -309,41 +406,41 @@ const styles = StyleSheet.create({
   },
   conversationItem: {
     flexDirection: 'row',
-    padding: 15,
-    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    minHeight: 72,
   },
   avatarContainer: {
     position: 'relative',
     marginRight: 12,
+    justifyContent: 'center',
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   avatarPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '600',
   },
   badge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#FF3B30',
     borderRadius: 10,
     minWidth: 20,
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
+    marginLeft: 8,
   },
   badgeText: {
     color: '#fff',
@@ -353,23 +450,33 @@ const styles = StyleSheet.create({
   conversationContent: {
     flex: 1,
     justifyContent: 'center',
+    paddingRight: 8,
   },
   conversationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    marginBottom: 2,
   },
   conversationName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '500',
     flex: 1,
   },
   time: {
-    fontSize: 12,
+    fontSize: 13,
     marginLeft: 8,
+    fontWeight: '400',
+  },
+  lastMessageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   lastMessage: {
     fontSize: 14,
+    flex: 1,
+    marginRight: 4,
   },
   emptyContainer: {
     flex: 1,

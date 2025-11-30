@@ -4,31 +4,40 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { notificationsAPI, messagesAPI } from '../config/api';
 
-// Configure notification categories with reply actions
+// Configure notification categories with modern WhatsApp-like actions
 const setupNotificationCategories = async () => {
   try {
-    console.log('🔧 Setting up notification categories...');
+    console.log('🔧 Setting up modern notification categories...');
     
-    // Define notification category for messages with reply action
-    // For Android, we need to ensure the action is properly configured
+    // Modern WhatsApp-like reply action with better styling
     const replyAction = {
       identifier: 'REPLY',
-      buttonTitle: 'Reply',
+      buttonTitle: 'Reply', // Modern emoji can be added: '💬 Reply'
       textInput: {
         submitButtonTitle: 'Send',
-        placeholder: 'Type a reply...',
+        placeholder: 'Type a message...',
       },
       options: {
-        opensAppToForeground: false, // Don't open app when replying
+        opensAppToForeground: false, // Don't open app when replying (like WhatsApp)
+      },
+    };
+
+    // Mark as read action (WhatsApp-like feature)
+    const markAsReadAction = {
+      identifier: 'MARK_AS_READ',
+      buttonTitle: 'Mark as Read',
+      options: {
+        opensAppToForeground: false,
       },
     };
     
-    await Notifications.setNotificationCategoryAsync('MESSAGE', [replyAction]);
-    console.log('✅ MESSAGE category configured');
+    // Configure MESSAGE category with both reply and mark as read
+    await Notifications.setNotificationCategoryAsync('MESSAGE', [replyAction, markAsReadAction]);
+    console.log('✅ MESSAGE category configured with modern actions');
 
-    // Define notification category for group messages with reply action
-    await Notifications.setNotificationCategoryAsync('GROUP_MESSAGE', [replyAction]);
-    console.log('✅ GROUP_MESSAGE category configured');
+    // Configure GROUP_MESSAGE category with both reply and mark as read
+    await Notifications.setNotificationCategoryAsync('GROUP_MESSAGE', [replyAction, markAsReadAction]);
+    console.log('✅ GROUP_MESSAGE category configured with modern actions');
 
     // Verify categories were set
     const categories = await Notifications.getNotificationCategoriesAsync();
@@ -134,7 +143,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       const { actionIdentifier, userText, notification } = response;
       const notificationData = notification.request.content.data;
       
-      // Handle reply action
+      // Handle modern notification actions
       if (actionIdentifier === 'REPLY' && userText) {
         console.log('💬 Reply received:', userText);
         console.log('💬 Notification data:', notificationData);
@@ -159,36 +168,46 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
             return; // Don't dismiss if we couldn't process
           }
           
-          // Dismiss the notification after successful reply
-          // This stops the spinning/loading state in the notification panel
+          // Dismiss the notification after successful reply (WhatsApp-like behavior)
           try {
             if (notificationId) {
               await Notifications.dismissNotificationAsync(notificationId);
               console.log('✅ Notification dismissed after successful reply');
             } else {
-              // If no specific ID, dismiss all (fallback)
               await Notifications.dismissAllNotificationsAsync();
               console.log('✅ All notifications dismissed after successful reply');
             }
           } catch (dismissError) {
             console.warn('⚠️ Could not dismiss notification:', dismissError);
-            // Not critical - notification will auto-dismiss eventually
           }
           
         } catch (error) {
           console.error('❌ Error sending reply:', error);
-          // Show error notification but don't dismiss the original
+          // Show modern error notification
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: 'Reply Failed',
-              body: 'Could not send your reply. Please try again.',
+              title: 'Message Failed',
+              body: 'Could not send your message. Please try again.',
               sound: true,
+              data: { type: 'error' },
             },
             trigger: null,
           });
         }
+      } else if (actionIdentifier === 'MARK_AS_READ') {
+        // Mark as read action (WhatsApp-like feature)
+        console.log('✅ Mark as read action triggered');
+        const notificationId = notification.request.identifier;
+        try {
+          if (notificationId) {
+            await Notifications.dismissNotificationAsync(notificationId);
+            console.log('✅ Notification marked as read and dismissed');
+          }
+        } catch (error) {
+          console.warn('⚠️ Could not mark notification as read:', error);
+        }
       } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-        // User tapped on notification (not a reply action)
+        // User tapped on notification (not an action)
         console.log('📱 Notification tapped (opening chat)');
         // Navigation will be handled by the AppNavigator if needed
       }
@@ -210,25 +229,37 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     try {
       if (Platform.OS === 'android') {
-        // Create notification channel with maximum importance for Android
+        // Create modern WhatsApp-like notification channel with maximum importance
         // MAX importance ensures floating/heads-up notifications are displayed
-        await Notifications.setNotificationChannelAsync('default', {
+        await Notifications.setNotificationChannelAsync('messages', {
           name: 'Messages',
-          description: 'Notifications for new messages with reply actions',
+          description: 'New messages and conversations with reply actions',
           importance: Notifications.AndroidImportance.MAX, // MAX = Heads-up (floating) notifications
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
+          vibrationPattern: [0, 250, 250, 250], // WhatsApp-like vibration pattern
+          lightColor: '#25D366', // WhatsApp green color
           sound: 'default',
           enableVibrate: true,
           showBadge: true,
-          // Additional settings for floating notifications
+          // Modern notification settings
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-          // Enable reply actions on Android
           enableLights: true,
-          // Enable actions on lockscreen
           bypassDnd: false,
         });
-        console.log('✅ Android notification channel created with MAX importance (floating enabled)');
+        console.log('✅ Modern Android notification channel created (WhatsApp-like)');
+        
+        // Also create a default channel for backward compatibility
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Default',
+          description: 'Default notifications',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#25D366',
+          sound: 'default',
+          enableVibrate: true,
+          showBadge: true,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          enableLights: true,
+        });
         
         // Also set up categories again after channel creation (Android needs this)
         await setupNotificationCategories();

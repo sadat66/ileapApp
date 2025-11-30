@@ -41,9 +41,11 @@
     },
     "notification": {
       "icon": "./assets/icon.png",
-      "color": "#ffffff",
+      "color": "#25D366",
       "iosDisplayInForeground": true,
-      "androidMode": "default"
+      "androidMode": "default",
+      "androidCollapsedTitle": "New messages",
+      "androidChannelId": "messages"
     },
     "extra": {
       "eas": {
