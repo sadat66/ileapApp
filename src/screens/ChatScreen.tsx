@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +20,7 @@ import { messagesAPI } from '../config/api';
 import { Message, Conversation, Group } from '../types/message';
 import { format } from 'date-fns';
 import Header from '../components/Header';
+import { Smile, Send, X } from 'lucide-react-native';
 
 // Helper function to get initials from name
 const getInitials = (name: string): string => {
@@ -54,7 +56,12 @@ export default function ChatScreen({ route, navigation }: any) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [conversation, setConversation] = useState<Conversation | Group | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     loadMessages();
@@ -90,6 +97,130 @@ export default function ChatScreen({ route, navigation }: any) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Get group members for mentions
+  const getGroupMembers = () => {
+    if (!isGroup || !conversation) return [];
+    const group = conversation as Group;
+    return group.members || [];
+  };
+
+  // Handle text input change with mention detection
+  const handleTextChange = (text: string) => {
+    setMessageText(text);
+    
+    if (isGroup) {
+      // Check for @ mentions - look for @ followed by text until space or end
+      const lastAtIndex = text.lastIndexOf('@');
+      if (lastAtIndex !== -1) {
+        const afterAt = text.substring(lastAtIndex + 1);
+        const spaceIndex = afterAt.indexOf(' ');
+        const newlineIndex = afterAt.indexOf('\n');
+        const endIndex = Math.min(
+          spaceIndex === -1 ? afterAt.length : spaceIndex,
+          newlineIndex === -1 ? afterAt.length : newlineIndex
+        );
+        
+        if (endIndex > 0 || afterAt.length === 0) {
+          // Still typing mention
+          const query = afterAt.substring(0, endIndex);
+          setMentionQuery(query);
+          setMentionStartIndex(lastAtIndex);
+          setShowMentionSuggestions(true);
+        } else {
+          setShowMentionSuggestions(false);
+        }
+      } else {
+        setShowMentionSuggestions(false);
+      }
+    }
+  };
+
+  // Insert mention into text
+  const insertMention = (member: { _id: string; name: string }) => {
+    const beforeMention = messageText.substring(0, mentionStartIndex);
+    const afterMention = messageText.substring(mentionStartIndex + 1 + mentionQuery.length);
+    const newText = `${beforeMention}@${member.name} ${afterMention}`;
+    setMessageText(newText);
+    setShowMentionSuggestions(false);
+    setMentionQuery('');
+    inputRef.current?.focus();
+  };
+
+  // Filter members for mention suggestions
+  const getMentionSuggestions = () => {
+    if (!mentionQuery) return getGroupMembers();
+    const query = mentionQuery.toLowerCase();
+    return getGroupMembers().filter((member: any) =>
+      member.name?.toLowerCase().includes(query)
+    );
+  };
+
+  // Render text with mentions highlighted
+  const renderMessageText = (content: string, isMyMessage: boolean) => {
+    const textColor = theme.isDark 
+      ? (isMyMessage ? '#FFFFFF' : theme.colors.text)
+      : '#000000';
+    const baseStyle = [styles.messageTextContent, { color: textColor }];
+
+    if (!isGroup) {
+      return <Text style={baseStyle}>{content}</Text>;
+    }
+
+    // Parse mentions in the format @username (supports names with spaces)
+    const parts: Array<{ text: string; isMention: boolean; userId?: string }> = [];
+    const mentionRegex = /@([^\s@]+)/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = mentionRegex.exec(content)) !== null) {
+      // Add text before mention
+      if (match.index > lastIndex) {
+        parts.push({ text: content.substring(lastIndex, match.index), isMention: false });
+      }
+      
+      // Find the member - try exact match first, then partial match
+      const mentionText = match[1];
+      const member = getGroupMembers().find((m: any) => 
+        m.name === mentionText || m.name?.toLowerCase().includes(mentionText.toLowerCase())
+      );
+      
+      if (member) {
+        parts.push({ text: `@${mentionText}`, isMention: true, userId: member._id });
+      } else {
+        parts.push({ text: match[0], isMention: false });
+      }
+      
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push({ text: content.substring(lastIndex), isMention: false });
+    }
+
+    if (parts.length === 0) {
+      parts.push({ text: content, isMention: false });
+    }
+
+    const mentionColor = theme.colors.primary;
+    const mentionBg = theme.isDark 
+      ? `rgba(${theme.colors.primary === '#0A84FF' ? '10, 132, 255' : '0, 122, 255'}, 0.2)`
+      : `rgba(0, 122, 255, 0.15)`;
+
+    return (
+      <Text style={baseStyle}>
+        {parts.map((part, index) => (
+          <Text
+            key={index}
+            style={part.isMention ? [styles.mentionText, { color: mentionColor, backgroundColor: mentionBg }] : undefined}
+          >
+            {part.text}
+          </Text>
+        ))}
+      </Text>
+    );
   };
 
   const sendMessage = async () => {
@@ -128,7 +259,13 @@ export default function ChatScreen({ route, navigation }: any) {
       <View style={styles.messageContainer}>
         {showDate && (
           <View style={styles.dateSeparator}>
-            <Text style={[styles.dateText, { color: theme.colors.textTertiary, backgroundColor: theme.colors.surface }]}>
+            <Text style={[
+              styles.dateText, 
+              { 
+                color: theme.isDark ? theme.colors.textSecondary : '#666666',
+                backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'
+              }
+            ]}>
               {format(messageDate, 'MMM d, yyyy')}
             </Text>
           </View>
@@ -155,30 +292,26 @@ export default function ChatScreen({ route, navigation }: any) {
             style={[
               styles.messageBubble,
               isMyMessage 
-                ? [styles.myMessage, { backgroundColor: theme.colors.messageBubble }]
-                : [styles.otherMessage, { backgroundColor: theme.colors.messageBubbleOther }],
+                ? [styles.myMessage, { backgroundColor: dynamicStyles.sentMessageBg }]
+                : [
+                    styles.otherMessage, 
+                    { 
+                      backgroundColor: dynamicStyles.receivedMessageBg,
+                      shadowOpacity: theme.isDark ? 0 : 0.1,
+                      elevation: theme.isDark ? 0 : 1,
+                    }
+                  ],
             ]}
           >
             {!isMyMessage && (
-              <Text style={[styles.senderName, { color: theme.colors.textSecondary }]}>{senderName}</Text>
+              <Text style={[styles.senderName, { color: theme.colors.primary }]}>{senderName}</Text>
             )}
             
             {item.content && (
-              <Text style={isMyMessage 
-                ? [styles.myMessageText, { color: theme.colors.messageBubbleText }]
-                : [styles.otherMessageText, { color: theme.colors.messageBubbleOtherText }]
-              }>
-                {item.content}
-              </Text>
+              renderMessageText(item.content, isMyMessage)
             )}
             
-            <Text style={[
-              styles.messageTime, 
-              { color: isMyMessage 
-                ? 'rgba(255, 255, 255, 0.7)' 
-                : theme.colors.textTertiary 
-              }
-            ]}>
+            <Text style={[styles.messageTime, { color: theme.isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)' }]}>
               {format(messageDate, 'h:mm a')}
             </Text>
           </View>
@@ -219,22 +352,17 @@ export default function ChatScreen({ route, navigation }: any) {
     ? (conversation as Group)?.name || 'Group'
     : (conversation as Conversation)?.user?.name || 'User';
 
+  // Theme-aware colors for message bubbles
+  const sentMessageBg = theme.isDark ? '#1E3A5F' : '#D6E8FF'; // Dark blue for dark mode, light blue for light
+  const receivedMessageBg = theme.isDark ? theme.colors.surface : '#FFFFFF';
+  const chatBackground = theme.isDark ? theme.colors.background : '#F5F7FA';
+  const inputAreaBg = theme.isDark ? theme.colors.card : '#F0F0F0';
+
   const dynamicStyles = {
-    safeArea: { backgroundColor: theme.colors.background },
-    container: { backgroundColor: theme.colors.surface },
-    messagesList: { padding: 15 },
-    dateText: { 
-      color: theme.colors.textTertiary, 
-      backgroundColor: theme.colors.surface 
-    },
-    messageBubbleMy: { backgroundColor: theme.colors.messageBubble },
-    messageBubbleOther: { backgroundColor: theme.colors.messageBubbleOther },
-    myMessageText: { color: theme.colors.messageBubbleText },
-    otherMessageText: { color: theme.colors.messageBubbleOtherText },
-    senderName: { color: theme.colors.textSecondary },
-    messageTime: { color: theme.colors.textTertiary },
+    safeArea: { backgroundColor: chatBackground },
+    container: { backgroundColor: chatBackground },
     inputContainer: { 
-      backgroundColor: theme.colors.card, 
+      backgroundColor: inputAreaBg, 
       borderTopColor: theme.colors.border 
     },
     input: { 
@@ -244,6 +372,8 @@ export default function ChatScreen({ route, navigation }: any) {
     },
     sendButton: { backgroundColor: theme.colors.primary },
     emptyText: { color: theme.colors.textTertiary },
+    sentMessageBg: sentMessageBg,
+    receivedMessageBg: receivedMessageBg,
   };
 
   return (
@@ -268,7 +398,7 @@ export default function ChatScreen({ route, navigation }: any) {
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={[styles.messagesList, dynamicStyles.messagesList]}
+          contentContainerStyle={styles.messagesList}
           style={styles.messagesContainer}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           ListEmptyComponent={
@@ -279,32 +409,102 @@ export default function ChatScreen({ route, navigation }: any) {
         />
 
         <SafeAreaView edges={['bottom']} style={[styles.inputSafeArea, { backgroundColor: theme.colors.card }]}>
+          {/* Mention Suggestions */}
+          {showMentionSuggestions && isGroup && (
+            <View style={[styles.mentionSuggestions, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <FlatList
+                data={getMentionSuggestions()}
+                keyExtractor={(item: any) => item._id}
+                renderItem={({ item: member }: { item: any }) => (
+                  <TouchableOpacity
+                    style={styles.mentionItem}
+                    onPress={() => insertMention(member)}
+                  >
+                    <View style={[styles.mentionAvatar, { backgroundColor: getAvatarColor(member.name || '') }]}>
+                      {member.image ? (
+                        <Image source={{ uri: member.image }} style={styles.mentionAvatarImage} />
+                      ) : (
+                        <Text style={styles.mentionAvatarText}>{getInitials(member.name || '')}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.mentionName, { color: theme.colors.text }]}>{member.name}</Text>
+                  </TouchableOpacity>
+                )}
+                keyboardShouldPersistTaps="handled"
+              />
+            </View>
+          )}
+
           <View style={[styles.inputContainer, dynamicStyles.inputContainer]}>
-            <TextInput
-              style={[styles.input, dynamicStyles.input]}
-              value={messageText}
-              onChangeText={setMessageText}
-              placeholder="Type a message..."
-              placeholderTextColor={theme.colors.textTertiary}
-              multiline
-              editable={!isSending}
-            />
             <TouchableOpacity
-              style={[
-                styles.sendButton,
-                dynamicStyles.sendButton,
-                (!messageText.trim() || isSending) && styles.sendButtonDisabled
-              ]}
-              onPress={sendMessage}
-              disabled={!messageText.trim() || isSending}
+              style={styles.emojiButton}
+              onPress={() => setShowEmojiPicker(!showEmojiPicker)}
             >
-              {isSending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.sendButtonText}>Send</Text>
-              )}
+              <Smile size={24} color={theme.colors.textSecondary} />
             </TouchableOpacity>
+            
+            <View style={[styles.inputWrapper, { backgroundColor: theme.colors.input, borderColor: theme.colors.border }]}>
+              <TextInput
+                ref={inputRef}
+                style={[styles.input, { color: theme.colors.inputText }]}
+                value={messageText}
+                onChangeText={handleTextChange}
+                placeholder="Type a message..."
+                placeholderTextColor={theme.colors.textTertiary}
+                multiline
+                editable={!isSending}
+              />
+            </View>
+
+            {messageText.trim() ? (
+              <TouchableOpacity
+                style={[styles.sendButton, dynamicStyles.sendButton, isSending && styles.sendButtonDisabled]}
+                onPress={sendMessage}
+                disabled={isSending}
+              >
+                {isSending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Send size={20} color="#fff" />
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.sendButtonPlaceholder} />
+            )}
           </View>
+
+          {/* Simple Emoji Picker Modal */}
+          <Modal
+            visible={showEmojiPicker}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowEmojiPicker(false)}
+          >
+            <View style={styles.emojiPickerOverlay}>
+              <View style={[styles.emojiPickerContainer, { backgroundColor: theme.colors.card }]}>
+                <View style={[styles.emojiPickerHeader, { borderBottomColor: theme.colors.border }]}>
+                  <Text style={[styles.emojiPickerTitle, { color: theme.colors.text }]}>Select Emoji</Text>
+                  <TouchableOpacity onPress={() => setShowEmojiPicker(false)}>
+                    <X size={24} color={theme.colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.emojiGrid}>
+                  {['😀', '😂', '🥰', '😍', '🤔', '😎', '👍', '❤️', '🔥', '🎉', '✅', '👏', '🙏', '💪', '🎊', '😊', '😉', '😋', '😘', '😗', '😙', '😚', '😛', '😜', '😝', '😞', '😟', '😠', '😡', '😢', '😣', '😤', '😥', '😦', '😧', '😨', '😩', '😪', '😫', '😬', '😭', '😮', '😯', '😰', '😱', '😲', '😳', '😴', '😵', '😶', '😷', '😸', '😹', '😺', '😻', '😼', '😽', '😾', '😿', '🙀'].map((emoji, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.emojiItem}
+                      onPress={() => {
+                        setMessageText(prev => prev + emoji);
+                        setShowEmojiPicker(false);
+                      }}
+                    >
+                      <Text style={styles.emojiText}>{emoji}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -352,45 +552,51 @@ const styles = StyleSheet.create({
     width: 60,
   },
   messagesList: {
-    padding: 15,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   messageContainer: {
-    marginBottom: 10,
+    marginBottom: 2,
   },
   dateSeparator: {
     alignItems: 'center',
-    marginVertical: 15,
+    marginVertical: 12,
   },
   dateText: {
     fontSize: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+    // backgroundColor and color will be set dynamically based on theme
   },
   messageRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 4,
+    marginBottom: 2,
+    paddingHorizontal: 4,
   },
   myMessageRow: {
     justifyContent: 'flex-end',
+    paddingLeft: 60, // Space for avatar on left side
   },
   otherMessageRow: {
     justifyContent: 'flex-start',
+    paddingRight: 60, // Space for avatar on right side
   },
   avatarContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 8,
+    marginHorizontal: 6,
     overflow: 'hidden',
   },
   avatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   avatarText: {
     color: '#fff',
@@ -402,55 +608,97 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '75%',
-    padding: 12,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    // WhatsApp-like rounded corners
+    borderTopLeftRadius: 0,
   },
   myMessage: {
-    backgroundColor: '#007AFF',
+    // backgroundColor will be set dynamically based on theme
+    borderTopRightRadius: 0,
+    borderTopLeftRadius: 8,
   },
   otherMessage: {
-    backgroundColor: '#fff',
+    // backgroundColor will be set dynamically based on theme
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 8,
+    // Shadow for depth (only in light mode)
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   senderName: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     marginBottom: 4,
+    // color will be set dynamically based on theme
+  },
+  messageTextContent: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  mentionText: {
+    // color and backgroundColor will be set dynamically based on theme
+    fontWeight: '600',
+    paddingHorizontal: 2,
+    borderRadius: 3,
   },
   myMessageText: {
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
   },
   otherMessageText: {
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
   },
   messageTime: {
     fontSize: 11,
     marginTop: 4,
     alignSelf: 'flex-end',
+    // color will be set dynamically based on theme
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 15,
-    paddingBottom: 10,
-    borderTopWidth: 1,
-    alignItems: 'flex-end',
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    borderTopWidth: 0.5,
+    alignItems: 'center',
+    backgroundColor: '#F0F0F0',
+  },
+  inputWrapper: {
+    flex: 1,
+    borderRadius: 20,
+    borderWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 8,
+    maxHeight: 100,
+    backgroundColor: '#FFFFFF',
   },
   input: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    maxHeight: 100,
-    fontSize: 16,
-    marginRight: 10,
+    fontSize: 15,
+    padding: 0,
+    maxHeight: 84,
   },
-  sendButton: {
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  emojiButton: {
+    padding: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 60,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#25D366', // WhatsApp green send button
+  },
+  sendButtonPlaceholder: {
+    width: 44,
+    height: 44,
   },
   sendButtonDisabled: {
     opacity: 0.5,
@@ -459,6 +707,79 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  mentionSuggestions: {
+    maxHeight: 150,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderBottomWidth: 0.5,
+  },
+  mentionAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  mentionAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  mentionAvatarText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  mentionName: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emojiPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  emojiPickerContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    maxHeight: '50%',
+  },
+  emojiPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    // borderBottomColor will be set dynamically based on theme
+  },
+  emojiPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 12,
+  },
+  emojiItem: {
+    width: '12%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  emojiText: {
+    fontSize: 32,
   },
   emptyContainer: {
     flex: 1,
