@@ -310,36 +310,85 @@ export default function ChatScreen({ route, navigation }: any) {
 
     // Parse mentions in the format @username (supports names with spaces)
     const parts: Array<{ text: string; isMention: boolean; userId?: string }> = [];
-    const mentionRegex = /@([^\s@]+)/g;
+    const members = getGroupMembers();
     let lastIndex = 0;
-    let match;
+    let currentIndex = 0;
 
-    while ((match = mentionRegex.exec(content)) !== null) {
+    while (currentIndex < content.length) {
+      const atIndex = content.indexOf('@', currentIndex);
+      
+      if (atIndex === -1) {
+        // No more @ symbols, add remaining text
+        if (lastIndex < content.length) {
+          parts.push({ text: content.substring(lastIndex), isMention: false });
+        }
+        break;
+      }
+
       // Add text before mention
-      if (match.index > lastIndex) {
-        parts.push({ text: content.substring(lastIndex, match.index), isMention: false });
+      if (atIndex > lastIndex) {
+        parts.push({ text: content.substring(lastIndex, atIndex), isMention: false });
       }
+
+      // Try to find the longest matching member name starting from @
+      let matchedMember = null;
+      let matchedLength = 0;
+      let matchedText = '';
+      const textAfterAt = content.substring(atIndex + 1);
       
-      // Find the member - try exact match first, then partial match
-      const mentionText = match[1];
-      const member = getGroupMembers().find((m: any) => 
-        m.name === mentionText || m.name?.toLowerCase().includes(mentionText.toLowerCase())
-      );
-      
-      if (member) {
-        parts.push({ text: `@${mentionText}`, isMention: true, userId: member._id });
+      // Try to match each member's name
+      for (const member of members) {
+        if (!member.name) continue;
+        const memberName = member.name.trim();
+        if (!memberName) continue;
+        const nameLength = memberName.length;
+        
+        // Check if the text after @ starts with this member's name
+        // and is followed by a space, punctuation, end of string, or another @
+        if (textAfterAt.length >= nameLength) {
+          const potentialMatch = textAfterAt.substring(0, nameLength);
+          const nextChar = textAfterAt.length > nameLength ? textAfterAt[nameLength] : '';
+          
+          // Match if it's an exact match (case-insensitive) and followed by a boundary
+          if (potentialMatch.toLowerCase() === memberName.toLowerCase()) {
+            // Check if followed by a boundary (space, punctuation, end, or @)
+            if (nextChar === '' || nextChar === ' ' || nextChar === '@' || /[.,!?;:)]/.test(nextChar)) {
+              if (nameLength > matchedLength) {
+                matchedMember = member;
+                matchedLength = nameLength;
+                matchedText = potentialMatch; // Use the actual text from message, not database name
+              }
+            }
+          }
+        }
+      }
+
+      if (matchedMember && matchedLength > 0) {
+        // Found a match, highlight the full name using the actual text from the message
+        parts.push({ 
+          text: `@${matchedText}`, 
+          isMention: true, 
+          userId: matchedMember._id 
+        });
+        lastIndex = atIndex + 1 + matchedLength;
+        currentIndex = lastIndex;
       } else {
-        parts.push({ text: match[0], isMention: false });
+        // No match found, treat @ as regular text and continue from next character
+        parts.push({ text: '@', isMention: false });
+        lastIndex = atIndex + 1;
+        currentIndex = lastIndex;
       }
-      
-      lastIndex = match.index + match[0].length;
     }
 
-    // Add remaining text
+    // Add remaining text only if we haven't processed everything
     if (lastIndex < content.length) {
-      parts.push({ text: content.substring(lastIndex), isMention: false });
+      const remainingText = content.substring(lastIndex);
+      if (remainingText) {
+        parts.push({ text: remainingText, isMention: false });
+      }
     }
 
+    // Fallback: if no parts were created, add the entire content
     if (parts.length === 0) {
       parts.push({ text: content, isMention: false });
     }
